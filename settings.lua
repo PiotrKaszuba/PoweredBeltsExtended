@@ -11,7 +11,7 @@ data:extend({
         type = "double-setting",
         name = "powered-belts-usage-multiplier",
         setting_type = "startup",
-        default_value = 1,
+        default_value = 0.25,
         minimum_value = 0,
         order = "a"
     },
@@ -22,6 +22,25 @@ data:extend({
         default_value = 500,
         minimum_value = 0,
         order = "a"
-    }
-
+    },
+    --[[
+    {
+        type = "int-setting",
+        name = "powered-belts-num-upgrades",
+        setting_type = "startup",
+        default_value = 5,
+        minimum_value = 5,
+        maximum_value = 5,
+        order = "a"
+    },
+    --]]
+    {
+        type = "double-setting",
+        name = "powered-belts-upgrade-reduction",
+        setting_type = "startup",
+        default_value = 0.2,
+        minimum_value = 0,
+        maximum_value = 1.0,
+        order = "a"
+    },
 })

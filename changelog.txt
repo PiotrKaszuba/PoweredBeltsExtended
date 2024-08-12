@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.0.3
+Date: 2024.8.12
+  Changes:
+    - Fixed deconstruction planner not working with unpowered entities.
+    - Fixed upgrade planner.
+    - Changing startup configurations (power usage multiplier) now triggers replacement of entities to correct adjust power usage - previously they both: did not decrease energy usage and stopped working after a while.
+    - Added statistics that track how many items were 'saved' by underground belts no longer removing items.
+    - Added command that triggers analysis of power entities that cleans any 'orphaned' power entities (energy interfaces) if no belts are present anymore at the location.
+    - Added technology research that reduces energy usage of power entities by configurable factor, progressing multiplicatively with upgrade level.   
+---------------------------------------------------------------------------------------------------
 Version: 1.0.2
 Date: 2024.8.9
   Changes:

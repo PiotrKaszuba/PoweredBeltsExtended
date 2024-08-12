@@ -29,25 +29,159 @@ script.on_init(function()
 		global.spilled_items = {}
 	end
 	global.total_num_saved_items = 0
+
+	if not global.player_forces then global.player_forces = {} end
 	
 	
 end)
 
+function get_correct_belt_level(force)
+	local force_name = force.name
+	local belt_level = 0
+	if global.player_forces[force_name] and global.player_forces[force_name]['belt_level'] then
+		belt_level = global.player_forces[force_name]['belt_level']
+	end
+	return belt_level
+end
+
+function extract_number_from_string(str)
+    local number = str:match("%d+")
+    return tonumber(number)
+end
+
+function tech_check(event)
+	game.print(event.research.name)
+	game.print(event.research.level)
+	if string.match(event.research.name, "efficient%-belts%-") then
+		local force_name = event.research.force.name
+		
+		if global.player_forces[force_name] == nil then
+			global.player_forces[force_name] = {}
+		end
+		local tech_level = extract_number_from_string(event.research.name)
+		global.player_forces[force_name]['belt_level'] = tech_level
+	end
+end
+
+function string:endswith(suffix)
+    return self:sub(-#suffix) == suffix
+end
+
+function string:startswith(prefix)
+    return self:sub(1, #prefix) == prefix
+end
 
 function get_entity_idx(entity)
 	return entity.position.x .. " " .. entity.position.y
+end
+
+function get_entity_idx_from_position(position)
+	return position.x .. " " .. position.y
+end
+
+function clear_power_entity(pos)
+	if global.power_entities[pos] ~= nil then
+		global.power_entities[pos].destroy()
+		global.power_entities[pos] = nil
+	end
 end
 
 function clear_tile(pos)
 	if global.entities[pos] ~= nil then
 		global.entities[pos] = nil
     end
-
-	if global.power_entities[pos] ~= nil then
-		global.power_entities[pos].destroy()
-		global.power_entities[pos] = nil
-	end
+	clear_power_entity(pos)
 end
+
+function get_correct_power_entity_name(base_name, force)
+	local correct_level = get_correct_belt_level(force)
+	local usage_name = tostring(settings.startup["powered-belts-usage-multiplier"].value):gsub("%.", "_")
+	local upgrade_name = tostring(settings.startup["powered-belts-upgrade-reduction"].value):gsub("%.", "_")
+	local name = base_name .. "-" .. usage_name .. "-" .. upgrade_name ..  "-" .. correct_level .. "-power"
+	return name
+end
+
+function create_power_entity(base_name, surface, position, force, direction, base_name_is_correct)
+	local pos = get_entity_idx_from_position(position)
+	clear_power_entity(pos)
+	local name = base_name
+	if not base_name_is_correct then
+		name = get_correct_power_entity_name(base_name)
+	end
+	global.power_entities[pos] = surface.create_entity{
+		name = name,
+		position = position,
+		force = force,
+		direction = direction,
+		destructible = false
+	}
+end
+
+function check_and_replace_power_entity(entity_to_power, power_entity)
+	local name = entity_to_power.name
+	local base_name = nil
+	if string.match(name, "unpowered%-") then
+		base_name = string.sub(name, 11)
+	else
+		base_name = name
+	end
+	local correct_name = get_correct_power_entity_name(base_name, entity_to_power.force)
+	if power_entity == nil or (not power_entity.valid) or correct_name ~= power_entity.name or entity_to_power.force.name ~= power_entity.force.name then
+		create_power_entity(correct_name, entity_to_power.surface, entity_to_power.position, entity_to_power.force, entity_to_power.direction, true)
+	end
+
+end
+
+function find_all_entities_to_power_at_position(surface, position, radius)
+	local entities = surface.find_entities_filtered{position=position, radius=radius}
+	local entities_to_power = {}
+	for k,v in pairs(entities) do
+		if (not v.name.endswith('-power')) and (v.type == 'transport-belt' or v.type == 'underground-belt' or v.type == 'splitter' or v.type == 'loader' or v.type == 'loader-1x1') then
+			entities_to_power[get_entity_idx(v)] = v
+			game.print("ent: " .. get_entity_idx(v))
+		end
+	end
+	return entities_to_power
+end
+function find_all_power_entities()
+	game.print("Checking power entities..")
+	local surface = game.player.surface
+	local entities = surface.find_entities_filtered{type = 'electric-energy-interface'}
+	local power_entities_temp = {}
+	for k,v in pairs(entities) do
+		if string.endswith(v.name, '-power') then
+			local pos = get_entity_idx(v)
+			local valid_entity = true
+			if power_entities_temp[pos] ~= nil then
+				game.print('Warning: double power entity (destroying it now) at position: ' .. pos)
+				v.destroy()
+				valid_entity = false
+			
+			elseif global.entities[pos] == nil then
+				game.print('Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos)
+				local entities_to_power = find_all_entities_to_power_at_position(surface, v.position, 1)
+				
+				if entities_to_power[pos] ~= nil then
+					game.print("Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos].name)
+					global.entities[pos] = entities_to_power[pos]
+				else
+					game.print("Warning: ... AND entity to be powered DOES NOT exist at this position (removing power entity now)!")
+					global.power_entities[pos].destroy()
+					global.power_entities[pos] = nil
+					valid_entity = false
+				end
+				
+			
+			elseif global.power_entities[pos] ~= v and valid_entity then
+				game.print('Warning: this power entity does not have entry in power entities table, position: (assigning it now)' .. pos)
+				global.power_entities[pos] = v
+			end
+			power_entities_temp[pos] = v
+		end
+	end
+
+end
+
 
 ---- ON EVENT ----
 script.on_event({defines.events.on_robot_built_entity, defines.events.on_built_entity}, function(event)
@@ -57,9 +191,9 @@ script.on_event({defines.events.on_robot_built_entity, defines.events.on_built_e
 		--game.print(string.gsub(event.created_entity.name, "unpowered-", ""))
 		
 		clear_tile(pos)
-
+		local correct_name = get_correct_power_entity_name(event.created_entity.name, event.created_entity.force)
 		global.power_entities[pos] = event.created_entity.surface.create_entity{
-			name = event.created_entity.name.."-power",
+			name = correct_name,
 			position = event.created_entity.position,
 			force = event.created_entity.force,
 			direction = event.created_entity.direction,
@@ -218,6 +352,11 @@ function check_and_clear_lanes(underground, underground_len, clear_ground_lanes,
 	
     for lane_idx = 1, 2 do
    		local lane = underground.get_transport_line(lane_idx)
+		--[[
+		if not (lane and lane.valid) then
+			game.print("Warning: invalid line")
+		end
+		--]]
 		if lane then
 			local max_check = lane_max_check(underground, lane_idx, underground_len)
 			local items, positions = check_and_clear_lane(lane, max_check, clear_ground_lanes, capture_positions)
@@ -230,6 +369,11 @@ function check_and_clear_lanes(underground, underground_len, clear_ground_lanes,
 	if underground.belt_to_ground_type == "input" and n then
 		for lane_idx = 3, 4 do
 			local lane = underground.get_transport_line(lane_idx)
+			--[[
+			if not (lane and lane.valid) then
+				game.print("Warning: invalid line")
+			end
+			--]]
 			if lane then
 				local max_check = lane_max_check(underground, lane_idx, underground_len)
 				local items, positions = check_and_clear_lane(lane, max_check, true, capture_positions)
@@ -261,6 +405,11 @@ end
 function fill_lane(underground, lane_idx, items, positions, starting_item_idx, obey_positions, underground_len)
 	local max_check = lane_max_check(underground, lane_idx, underground_len)
 	local lane = underground.get_transport_line(lane_idx)
+	--[[
+	if not (lane and lane.valid) then
+		game.print("Warning: invalid line")
+	end
+	--]]
 	local current_check = 0.0
 	if positions and #positions > 0 and obey_positions then
 		current_check = positions[starting_item_idx] - (global.belt_interval * 2)
@@ -339,112 +488,6 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 	add_count(global.saved_items, '_total', inserted + c)
 end
 
--- Returns the Levenshtein distance between the two given strings
-function string.levenshtein(str1, str2)
-	local len1 = string.len(str1)
-	local len2 = string.len(str2)
-	local matrix = {}
-	local cost = 0
-	
-        -- quick cut-offs to save time
-	if (len1 == 0) then
-		return len2
-	elseif (len2 == 0) then
-		return len1
-	elseif (str1 == str2) then
-		return 0
-	end
-	
-        -- initialise the base matrix values
-	for i = 0, len1, 1 do
-		matrix[i] = {}
-		matrix[i][0] = i
-	end
-	for j = 0, len2, 1 do
-		matrix[0][j] = j
-	end
-	
-        -- actual Levenshtein algorithm
-	for i = 1, len1, 1 do
-		for j = 1, len2, 1 do
-			if (str1:byte(i) == str2:byte(j)) then
-				cost = 0
-			else
-				cost = 1
-			end
-			
-			matrix[i][j] = math.min(matrix[i-1][j] + 1, matrix[i][j-1] + 1, matrix[i-1][j-1] + cost)
-		end
-	end
-	
-        -- return the last value - this is the Levenshtein distance
-	return matrix[len1][len2]
-end
-
-function EditDistance( s, t, lim )
-    local s_len, t_len = #s, #t -- Calculate the sizes of the strings or arrays
-    if lim and math.abs( s_len - t_len ) >= lim then -- If sizes differ by lim, we can stop here
-        return lim
-    end
-    
-    -- Convert string arguments to arrays of ints (ASCII values)
-    if type( s ) == "string" then
-        s = { string.byte( s, 1, s_len ) }
-    end
-    
-    if type( t ) == "string" then
-        t = { string.byte( t, 1, t_len ) }
-    end
-    
-    local min = math.min -- Localize for performance
-    local num_columns = t_len + 1 -- We use this a lot
-    
-    local d = {} -- (s_len+1) * (t_len+1) is going to be the size of this array
-    -- This is technically a 2D array, but we're treating it as 1D. Remember that 2D access in the
-    -- form my_2d_array[ i, j ] can be converted to my_1d_array[ i * num_columns + j ], where
-    -- num_columns is the number of columns you had in the 2D array assuming row-major order and
-    -- that row and column indices start at 0 (we're starting at 0).
-    
-    for i=0, s_len do
-        d[ i * num_columns ] = i -- Initialize cost of deletion
-    end
-    for j=0, t_len do
-        d[ j ] = j -- Initialize cost of insertion
-    end
-    
-    for i=1, s_len do
-        local i_pos = i * num_columns
-        local best = lim -- Check to make sure something in this row will be below the limit
-        for j=1, t_len do
-            local add_cost = (s[ i ] ~= t[ j ] and 1 or 0)
-            local val = min(
-                d[ i_pos - num_columns + j ] + 1,                               -- Cost of deletion
-                d[ i_pos + j - 1 ] + 1,                                         -- Cost of insertion
-                d[ i_pos - num_columns + j - 1 ] + add_cost                     -- Cost of substitution, it might not cost anything if it's the same
-            )
-            d[ i_pos + j ] = val
-            
-            -- Is this eligible for tranposition?
-            if i > 1 and j > 1 and s[ i ] == t[ j - 1 ] and s[ i - 1 ] == t[ j ] then
-                d[ i_pos + j ] = min(
-                    val,                                                        -- Current cost
-                    d[ i_pos - num_columns - num_columns + j - 2 ] + add_cost   -- Cost of transposition
-                )
-            end
-            
-            if lim and val < best then
-                best = val
-            end
-        end
-        
-        if lim and best >= lim then
-            return lim
-        end
-    end
-    
-    return d[ #d ]
-end
-
 function get_max_lane_idx(underground)
 	local max_lane_idx = 2
 	if underground.belt_to_ground_type == 'input' then
@@ -493,7 +536,11 @@ function extra_and_saved_items_with_created_state(underground, saved_items, save
 		extra_items_per_lane[lane_identifier] = {}
 		num_extra_items_per_lane[lane_identifier] = 0
 		local lane = underground.get_transport_line(lane_idx)
-		
+		--[[
+		if not (lane and lane.valid) then
+			game.print("Warning: invalid line")
+		end
+		--]]
 		for item_idx = 1, #lane do
 			local item = lane[item_idx].name
 			if saved_items[item] == nil or saved_items[item] == 0 then
@@ -703,10 +750,11 @@ function run_for_entity(entity, entity_idx, check_for_neighbour, underground_len
 	
 	-- TODO/IDEA: only powered up when both neighbours powered up? otherwise both power down?
 	if entity.valid and global.entities[entity_idx] ~= nil then
-		if string.match(entity.name, "unpowered-") and (global.power_entities[entity_idx].energy > settings.global["powered-belts-required-energy"].value or powerup_n) then
+		check_and_replace_power_entity(entity, global.power_entities[entity_idx])
+		if string.match(entity.name, "unpowered%-") and (global.power_entities[entity_idx].energy > settings.global["powered-belts-required-energy"].value or powerup_n) then
 			return replace_entity(entity, entity_idx, check_for_neighbour, true, underground_len, clear_ground_lanes, capture_positions)
 			
-		elseif (not string.match(entity.name, "unpowered-")) and (global.power_entities[entity_idx].energy <= settings.global["powered-belts-required-energy"].value or powerdown_n) then
+		elseif (not string.match(entity.name, "unpowered%-")) and (global.power_entities[entity_idx].energy <= settings.global["powered-belts-required-energy"].value or powerdown_n) then
 			return replace_entity(entity, entity_idx, check_for_neighbour, false, underground_len, clear_ground_lanes, capture_positions)
 		end
 	end
@@ -717,7 +765,7 @@ end
 
 ---- ON TICK ----
 script.on_event(defines.events.on_tick, function(event)
-	if global.ver ~= 102 then
+	if global.ver ~= 103 then
 		global.belt_check_interval = 0.05
 		global.belt_interval = 0.25
 		global.ground_lanes_max_check = 1.0
@@ -741,7 +789,9 @@ script.on_event(defines.events.on_tick, function(event)
 		end
 		global.sum_ticks = 0
 		global.total_num_saved_items = 0
-		global.ver = 102
+		if not global.player_forces then global.player_forces = {} end
+		global.ver = 103
+
 	end
 	global.sum_ticks = global.sum_ticks + 1
     if global.power_entities ~= nil and global.entities ~= nil and next(global.power_entities) and next(global.entities) then
@@ -762,7 +812,8 @@ script.on_event(defines.events.on_tick, function(event)
         end
     end
 end)
-
+script.on_event({defines.events.on_research_finished}, tech_check)
+commands.add_command("CheckPowerEntities", "Checks and cleans power entities on the player's surface", find_all_power_entities)
 remote.add_interface("powered_belts_extended", {
   get_global = function() return global end
 })
