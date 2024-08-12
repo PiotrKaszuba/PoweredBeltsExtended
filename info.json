@@ -1,9 +1,9 @@
 {
     "name": "PoweredBeltsExtended",
-    "version": "1.0.3",
+    "version": "1.1.0",
     "title": "Powered Belts Extended",
     "author": "DiabolicWolf",
-    "description": "Belts now need power. All of them. Including all the modded ones. Mod by Romner_set: https://mods.factorio.com/user/Romner_set. Original version: https://mods.factorio.com/mod/PoweredBelts. I've modified the behaviour of powered belts (and others) to use buffer capacity of x*1kJ instead of x*17J and the entities turn off when they have less than required energy defined through setting (default = 500J). You could exploit it otherwise having 1 solar panel powering a huge amount of belts that won't slow down due to limitations of this mod.",
+    "description": "Belts now need power. All of them. Including all the modded ones. Mod by Romner_set: https://mods.factorio.com/user/Romner_set. Original version: https://mods.factorio.com/mod/PoweredBelts.\n The entities turn off when they have less than required energy. One could exploit it having 1 solar panel powering a huge amount of belts that won't slow down due to limitations of this mod.\n Fixed some major bugs (deconstruction planner not working, bugged upgrade planner, items disappearing from underground belts, clearing leftover entities by added command: /PBE_CheckPowerEntities).\n Added technology stages that reduce power usage by configurable fraction.\n Entities can now also update their energy usage to correct state after changing mod configurations and loading the map - previously they got bugged/stopped working.",
     "contact": "Discussion thread in this mod.",
     "homepage": "",
     "factorio_version": "1.1",

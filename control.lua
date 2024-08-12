@@ -1,15 +1,12 @@
----- INIT ----
-script.on_init(function()
-	global.entities = {}
-	global.power_entities = {}
-	global.belt_check_interval = 0.05
-	global.belt_interval = 0.25
-	global.ground_lanes_max_check = 1.0
-	global.fill_trial_interval = 0.025
-	global.ver = 102
-	global.saved_items = {}
-	global.spilled_items = {}
-	global.sum_ticks = 0
+function init_globals()
+	if global.entities == nil then
+		global.entities = {}
+	end
+	if global.power_entities == nil then
+		global.power_entities = {}
+	end
+	if global.sum_ticks == nil then global.sum_ticks = 0 end
+	if global.total_num_saved_items == nil then global.total_num_saved_items = 0 end
 
 	if global.saved_items == nil then
 		global.saved_items = {}
@@ -28,11 +25,19 @@ script.on_init(function()
 	if global.spilled_items == nil then
 		global.spilled_items = {}
 	end
-	global.total_num_saved_items = 0
 
 	if not global.player_forces then global.player_forces = {} end
-	
-	
+
+	global.belt_check_interval = 0.05
+	global.belt_interval = 0.25
+	global.ground_lanes_max_check = 1.0
+	global.fill_trial_interval = 0.025
+	global.ver = 110
+end
+
+---- INIT ----
+script.on_init(function()
+	init_globals()
 end)
 
 function get_correct_belt_level(force)
@@ -765,33 +770,8 @@ end
 
 ---- ON TICK ----
 script.on_event(defines.events.on_tick, function(event)
-	if global.ver ~= 103 then
-		global.belt_check_interval = 0.05
-		global.belt_interval = 0.25
-		global.ground_lanes_max_check = 1.0
-		global.fill_trial_interval = 0.025
-		if global.saved_items == nil then
-			global.saved_items = {}
-		end
-		if global.saved_items_true == nil then
-			global.saved_items_true = {}
-		end
-		if global.saved_items_per_lane == nil then
-			global.saved_items_per_lane = {}
-		end
-		
-		if global.num_saved_items_per_lane == nil then
-			global.num_saved_items_per_lane = {}
-		end
-		
-		if global.spilled_items == nil then
-			global.spilled_items = {}
-		end
-		global.sum_ticks = 0
-		global.total_num_saved_items = 0
-		if not global.player_forces then global.player_forces = {} end
-		global.ver = 103
-
+	if global.ver ~= 110 then
+		init_globals()
 	end
 	global.sum_ticks = global.sum_ticks + 1
     if global.power_entities ~= nil and global.entities ~= nil and next(global.power_entities) and next(global.entities) then
@@ -813,7 +793,7 @@ script.on_event(defines.events.on_tick, function(event)
     end
 end)
 script.on_event({defines.events.on_research_finished}, tech_check)
-commands.add_command("CheckPowerEntities", "Checks and cleans power entities on the player's surface", find_all_power_entities)
+commands.add_command("PBE_CheckPowerEntities", "Checks and cleans power entities on the player's surface", find_all_power_entities)
 remote.add_interface("powered_belts_extended", {
   get_global = function() return global end
 })
