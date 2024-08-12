@@ -1,0 +1,11 @@
+{
+    "name": "PoweredBeltsExtended",
+    "version": "1.0.3",
+    "title": "Powered Belts Extended",
+    "author": "DiabolicWolf",
+    "description": "Belts now need power. All of them. Including all the modded ones. Mod by Romner_set: https://mods.factorio.com/user/Romner_set. Original version: https://mods.factorio.com/mod/PoweredBelts. I've modified the behaviour of powered belts (and others) to use buffer capacity of x*1kJ instead of x*17J and the entities turn off when they have less than required energy defined through setting (default = 500J). You could exploit it otherwise having 1 solar panel powering a huge amount of belts that won't slow down due to limitations of this mod.",
+    "contact": "Discussion thread in this mod.",
+    "homepage": "",
+    "factorio_version": "1.1",
+    "dependencies": ["base >= 1.1", "! PoweredBelts"]
+}

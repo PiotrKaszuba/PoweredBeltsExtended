@@ -1,0 +1,79 @@
+---------------------------------------------------------------------------------------------------
+Version: 1.0.2
+Date: 2024.8.9
+  Changes:
+    - Fixed a bug that caused underground items from underground belts to disappear when out of power.
+---------------------------------------------------------------------------------------------------
+Version: 1.0.1
+Date: 2023.1.7
+  Changes:
+    - Updated changelog.
+---------------------------------------------------------------------------------------------------
+Version: 1.0.0
+Date: 2023.1.7
+  Bugfixes:
+    - Fixed crashing on startup.
+  Changes:
+    - Added setting 'Required energy' (default 500 J).
+    - When belts, undergrounds, splitters and loaders have lower energy (in the buffer) than 'Required energy' they turn off (instead of at 0 energy).
+    - Energy buffer capacity of all powered entities by this mod changed from 17*energy_usage/1000 to energy_usage. 
+---------------------------------------------------------------------------------------------------
+Version: 0.4.1
+Date: 2022.1.23
+  Bugfixes:
+    - Fixed crashing on startup.
+---------------------------------------------------------------------------------------------------
+Version: 0.4.0
+Date: 2021.3.27
+  Bugfixes:
+    - Fixed items on belts getting deleted and splitter filters being reset if a power outage occurs.
+    - Credit goes to IronCartographer. https://mods.factorio.com/user/IronCartographer
+---------------------------------------------------------------------------------------------------
+Version: 0.3.2
+Date: 2021.1.16
+  Changes:
+    - Updated to Factorio 1.1.
+---------------------------------------------------------------------------------------------------
+Version: 0.3.1
+Date: 2020.8.22
+  Bugfixes:
+    - Fixed a crash.
+    - Powered belts are now selectable with Q.
+---------------------------------------------------------------------------------------------------
+Version: 0.3.0
+Date: 2020.8.20
+  Major Features:
+    - Mod rewritten, now all belts, undergrounds, splitters and loaders (modded or not) require power proportional to their speed.
+---------------------------------------------------------------------------------------------------
+Version: 0.2.3
+Date: 2020.2.23
+  Bugfixes:
+    - Load fail in some cases
+---------------------------------------------------------------------------------------------------
+Version: 0.2.2
+Date: 2020.2.22
+  Bugfixes:
+    - Save/load broke the mod
+  Changes:
+    - Replace vanilla option now uses vanilla recipes, will use vanilla textures soon too
+---------------------------------------------------------------------------------------------------
+Version: 0.2.1
+Date: 2020.2.16
+  Features:
+    - Setting to replace vanilla belts
+  Changes:
+    - Express belts now take electric engines instead of lubricant
+---------------------------------------------------------------------------------------------------
+Version: 0.2.0
+Date: 2019.12.24
+  Major Features:
+    - Instead of a 4th tier there are now powered versions of each vanilla belt
+  Bugfixes:
+    - Underground belts no longer reset direction with a power outage
+---------------------------------------------------------------------------------------------------
+Version: 0.1.0
+Date: 2019.12.22
+  Info:
+    - First working version
+  Locale:
+    - English
