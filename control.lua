@@ -122,14 +122,17 @@ function create_power_entity(base_name, surface, position, force, direction, bas
 	}
 end
 
-function check_and_replace_power_entity(entity_to_power, power_entity)
-	local name = entity_to_power.name
-	local base_name = nil
+function extract_base_name_from_entity_to_power(name)
+	local base_name = name
 	if string.match(name, "unpowered%-") then
 		base_name = string.sub(name, 11)
-	else
-		base_name = name
 	end
+	return base_name
+end
+
+function check_and_replace_power_entity(entity_to_power, power_entity)
+	local base_name = extract_base_name_from_entity_to_power(entity_to_power.name)
+	
 	local correct_name = get_correct_power_entity_name(base_name, entity_to_power.force)
 	if power_entity == nil or (not power_entity.valid) or correct_name ~= power_entity.name or entity_to_power.force.name ~= power_entity.force.name then
 		create_power_entity(correct_name, entity_to_power.surface, entity_to_power.position, entity_to_power.force, entity_to_power.direction, true)
@@ -196,7 +199,7 @@ script.on_event({defines.events.on_robot_built_entity, defines.events.on_built_e
 		--game.print(string.gsub(event.created_entity.name, "unpowered-", ""))
 		
 		clear_tile(pos)
-		local correct_name = get_correct_power_entity_name(event.created_entity.name, event.created_entity.force)
+		local correct_name = get_correct_power_entity_name(extract_base_name_from_entity_to_power(event.created_entity.name), event.created_entity.force)
 		global.power_entities[pos] = event.created_entity.surface.create_entity{
 			name = correct_name,
 			position = event.created_entity.position,
