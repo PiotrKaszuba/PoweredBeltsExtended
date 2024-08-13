@@ -144,9 +144,9 @@ function find_all_entities_to_power_at_position(surface, position, radius)
 	local entities = surface.find_entities_filtered{position=position, radius=radius}
 	local entities_to_power = {}
 	for k,v in pairs(entities) do
-		if (not v.name.endswith('-power')) and (v.type == 'transport-belt' or v.type == 'underground-belt' or v.type == 'splitter' or v.type == 'loader' or v.type == 'loader-1x1') then
+		if (not string.endswith(v.name, '-power')) and (v.type == 'transport-belt' or v.type == 'underground-belt' or v.type == 'splitter' or v.type == 'loader' or v.type == 'loader-1x1') then
 			entities_to_power[get_entity_idx(v)] = v
-			game.print("ent: " .. get_entity_idx(v))
+			--game.print("ent: " .. get_entity_idx(v))
 		end
 	end
 	return entities_to_power
@@ -156,6 +156,7 @@ function find_all_power_entities()
 	local surface = game.player.surface
 	local entities = surface.find_entities_filtered{type = 'electric-energy-interface'}
 	local power_entities_temp = {}
+	local num_destroyed_entities = 0
 	for k,v in pairs(entities) do
 		if string.endswith(v.name, '-power') then
 			local pos = get_entity_idx(v)
@@ -164,29 +165,45 @@ function find_all_power_entities()
 				game.print('Warning: double power entity (destroying it now) at position: ' .. pos)
 				v.destroy()
 				valid_entity = false
-			
-			elseif global.entities[pos] == nil then
+				num_destroyed_entities = num_destroyed_entities + 1
+			end
+			local entities_to_power = nil
+			if valid_entity then
+				entities_to_power = find_all_entities_to_power_at_position(surface, v.position, 1)
+				if entities_to_power[pos] == nil then
+					--game.print("Warning: ... entity to be powered DOES NOT exist the position of power entity (removing power entity now), position: " .. pos)
+					v.destroy()
+					global.power_entities[pos] = nil
+					global.entities[pos] = nil
+					valid_entity = false
+					num_destroyed_entities = num_destroyed_entities + 1
+				end
+			end
+			if valid_entity and global.entities[pos] == nil then
 				game.print('Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos)
-				local entities_to_power = find_all_entities_to_power_at_position(surface, v.position, 1)
 				
-				if entities_to_power[pos] ~= nil then
+				if entities_to_power[pos] ~= nil then -- entities_to_power won't be nil because valid_entity check as when setting entities_to_power
 					game.print("Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos].name)
 					global.entities[pos] = entities_to_power[pos]
 				else
 					game.print("Warning: ... AND entity to be powered DOES NOT exist at this position (removing power entity now)!")
-					global.power_entities[pos].destroy()
+					v.destroy()
 					global.power_entities[pos] = nil
 					valid_entity = false
+					num_destroyed_entities = num_destroyed_entities + 1
 				end
 				
 			
-			elseif global.power_entities[pos] ~= v and valid_entity then
+			elseif valid_entity and global.power_entities[pos] ~= v and valid_entity then
 				game.print('Warning: this power entity does not have entry in power entities table, position: (assigning it now)' .. pos)
 				global.power_entities[pos] = v
 			end
-			power_entities_temp[pos] = v
+			
+			if valid_entity then power_entities_temp[pos] = v end
 		end
 	end
+
+	game.print("PBE_CheckPowerEntities command cleaned up: " .. num_destroyed_entities .. " power entities.")
 
 end
 
