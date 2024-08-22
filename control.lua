@@ -151,7 +151,65 @@ function find_all_entities_to_power_at_position(surface, position, radius)
 	end
 	return entities_to_power
 end
+
+function init_entity(entity)
+	local pos = get_entity_idx(entity)
+	clear_tile(pos)
+	local correct_name = get_correct_power_entity_name(extract_base_name_from_entity_to_power(entity.name), entity.force)
+	global.power_entities[pos] = entity.surface.create_entity{
+		name = correct_name,
+		position = entity.position,
+		force = entity.force,
+		direction = entity.direction,
+		destructible = false
+	}
+	global.entities[pos] = entity
+end
+
+function find_all_entities_powered()
+	game.print("Checking entities to be powered..")
+
+	local surface = game.player.surface
+	local types = {'transport-belt', 'underground-belt', 'splitter', 'loader'}
+	local entities = surface.find_entities_filtered{type = types}
+
+	local num_wrongly_present_and_valid = 0
+	local num_wrongly_present = 0
+	local num_nil = 0
+	local num_entity_invalid = 0
+	local num_init = 0
+	
+	for k,v in pairs(entities) do
+		if v.valid then
+			
+			local pos = get_entity_idx(v)
+
+			if global.entities[pos] ~= v then
+				if global.entities[pos] == nil then
+					num_nil = num_nil + 1
+
+				elseif global.entities[pos].valid then
+					num_wrongly_present_and_valid = num_wrongly_present_and_valid + 1
+				else
+					num_wrongly_present = num_wrongly_present + 1
+				end
+				init_entity(v)
+				num_init = num_init + 1
+			end
+		else
+			num_entity_invalid = num_entity_invalid + 1
+		end
+	end
+
+	game.print("Num entity invalid: " .. num_entity_invalid)
+	game.print("Num nil: " .. num_nil)
+	game.print("Num wrongly present (invalid): " .. num_wrongly_present)
+	game.print("Num wrongly present and valid: " .. num_wrongly_present_and_valid)
+	game.print("PBE_CheckPowerEntities command repaired: " .. num_init .. " entities.")
+end
+
 function find_all_power_entities()
+	find_all_entities_powered()
 	game.print("Checking power entities..")
 	local surface = game.player.surface
 	local entities = surface.find_entities_filtered{type = 'electric-energy-interface'}
@@ -208,23 +266,11 @@ function find_all_power_entities()
 end
 
 
+
 ---- ON EVENT ----
 script.on_event({defines.events.on_robot_built_entity, defines.events.on_built_entity}, function(event)
 	if event.created_entity.type == "transport-belt" or event.created_entity.type == "underground-belt" or event.created_entity.type == "splitter" or event.created_entity.type == "loader-1x1" or event.created_entity.type == "loader" then
-		local pos = get_entity_idx(event.created_entity)
-		--game.print(event.created_entity.name)
-		--game.print(string.gsub(event.created_entity.name, "unpowered-", ""))
-		
-		clear_tile(pos)
-		local correct_name = get_correct_power_entity_name(extract_base_name_from_entity_to_power(event.created_entity.name), event.created_entity.force)
-		global.power_entities[pos] = event.created_entity.surface.create_entity{
-			name = correct_name,
-			position = event.created_entity.position,
-			force = event.created_entity.force,
-			direction = event.created_entity.direction,
-			destructible = false
-		}
-		global.entities[pos] = event.created_entity
+		init_entity(event.created_entity)
 	end
 end)
 
