@@ -55,8 +55,8 @@ function extract_number_from_string(str)
 end
 
 function tech_check(event)
-	game.print(event.research.name)
-	game.print(event.research.level)
+	--game.print(event.research.name)
+	--game.print(event.research.level)
 	if string.match(event.research.name, "efficient%-belts%-") then
 		local force_name = event.research.force.name
 		
