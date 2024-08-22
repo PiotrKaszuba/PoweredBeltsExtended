@@ -200,11 +200,10 @@ function find_all_entities_powered()
 			num_entity_invalid = num_entity_invalid + 1
 		end
 	end
-
-	game.print("Num entity invalid: " .. num_entity_invalid)
-	game.print("Num nil: " .. num_nil)
-	game.print("Num wrongly present (invalid): " .. num_wrongly_present)
-	game.print("Num wrongly present and valid: " .. num_wrongly_present_and_valid)
+	if num_entity_invalid > 0 then game.print("Warning: num entity invalid: " .. num_entity_invalid) end
+	--game.print("Num nil: " .. num_nil)
+	if num_wrongly_present > 0 then game.print("Warning: num wrongly present (invalid): " .. num_wrongly_present) end
+	if num_wrongly_present_and_valid > 0 then game.print("Warning: num wrongly present and valid: " .. num_wrongly_present_and_valid) end
 	game.print("PBE_CheckPowerEntities command repaired: " .. num_init .. " entities.")
 end
 
