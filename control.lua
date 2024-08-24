@@ -821,10 +821,12 @@ function run_for_entity(entity, entity_idx, check_for_neighbour, underground_len
 	-- TODO/IDEA: only powered up when both neighbours powered up? otherwise both power down?
 	if entity.valid and global.entities[entity_idx] ~= nil then
 		check_and_replace_power_entity(entity, global.power_entities[entity_idx])
-		if string.match(entity.name, "unpowered%-") and (global.power_entities[entity_idx].energy > settings.global["powered-belts-required-energy"].value or powerup_n) then
+		local power_entity = global.power_entities[entity_idx]
+		local required_energy = math.min(settings.global["powered-belts-required-energy"].value, power_entity.electric_buffer_size * 0.75)
+		if string.match(entity.name, "unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
 			return replace_entity(entity, entity_idx, check_for_neighbour, true, underground_len, clear_ground_lanes, capture_positions)
 			
-		elseif (not string.match(entity.name, "unpowered%-")) and (global.power_entities[entity_idx].energy <= settings.global["powered-belts-required-energy"].value or powerdown_n) then
+		elseif (not string.match(entity.name, "unpowered%-")) and (power_entity.energy < required_energy or powerdown_n) then
 			return replace_entity(entity, entity_idx, check_for_neighbour, false, underground_len, clear_ground_lanes, capture_positions)
 		end
 	end
