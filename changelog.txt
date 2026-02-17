@@ -1,4 +1,12 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.2.0
+Date: 2026.2.17
+  Changes:
+    - Porting to Factorio 2.0
+    - Added multi-surface support.
+    - Added migration for existing saves.
+    - Fixes and improvements.
+---------------------------------------------------------------------------------------------------
 Version: 1.1.0
 Date: 2024.8.12
   Changes:

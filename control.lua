@@ -1,38 +1,203 @@
+local current_version = 120
+local belt_entity_types = {
+	["transport-belt"] = true,
+	["underground-belt"] = true,
+	["splitter"] = true,
+	["loader"] = true,
+	["loader-1x1"] = true,
+}
+local belt_entity_type_list = {"transport-belt", "underground-belt", "splitter", "loader", "loader-1x1"}
+
+local function get_surface_key(surface)
+	if not surface then
+		return nil
+	end
+	return surface.index
+end
+
+local function migrate_surface_partition(storage_key)
+	local table_root = storage[storage_key]
+	if table_root == nil then
+		storage[storage_key] = {}
+		return
+	end
+
+	local needs_migration = false
+	for _, value in pairs(table_root) do
+		if type(value) ~= "table" then
+			needs_migration = true
+		end
+		break
+	end
+
+	if not needs_migration then
+		return
+	end
+
+	local migrated = {}
+	for pos, entity in pairs(table_root) do
+		if entity and entity.valid and entity.surface then
+			local surface_key = get_surface_key(entity.surface)
+			if migrated[surface_key] == nil then
+				migrated[surface_key] = {}
+			end
+			migrated[surface_key][pos] = entity
+		end
+	end
+
+	storage[storage_key] = migrated
+end
+
+local function get_surface_tables(surface, create_if_missing)
+	local surface_key = get_surface_key(surface)
+	if surface_key == nil then
+		return nil, nil, nil
+	end
+
+	local entities_by_surface = storage.entities[surface_key]
+	local power_entities_by_surface = storage.power_entities[surface_key]
+
+	if create_if_missing then
+		if entities_by_surface == nil then
+			entities_by_surface = {}
+			storage.entities[surface_key] = entities_by_surface
+		end
+		if power_entities_by_surface == nil then
+			power_entities_by_surface = {}
+			storage.power_entities[surface_key] = power_entities_by_surface
+		end
+	end
+
+	return surface_key, entities_by_surface, power_entities_by_surface
+end
+
+local function cleanup_empty_surface_tables(surface_key)
+	if surface_key == nil then
+		return
+	end
+
+	local entities_by_surface = storage.entities[surface_key]
+	if entities_by_surface ~= nil and next(entities_by_surface) == nil then
+		storage.entities[surface_key] = nil
+	end
+
+	local power_entities_by_surface = storage.power_entities[surface_key]
+	if power_entities_by_surface ~= nil and next(power_entities_by_surface) == nil then
+		storage.power_entities[surface_key] = nil
+	end
+end
+
+local function prune_deleted_surfaces()
+	if not game then
+		return
+	end
+
+	for surface_key, _ in pairs(storage.entities) do
+		if game.surfaces[surface_key] == nil then
+			storage.entities[surface_key] = nil
+		end
+	end
+
+	for surface_key, _ in pairs(storage.power_entities) do
+		if game.surfaces[surface_key] == nil then
+			storage.power_entities[surface_key] = nil
+		end
+	end
+end
+
+local function get_next_power_entity_iterator()
+	local current_surface_key = storage.tick_surface_iterator_key
+	local current_entity_key = storage.tick_iterator_key
+	local current_surface_table = nil
+
+	if current_surface_key ~= nil then
+		current_surface_table = storage.power_entities[current_surface_key]
+		if current_surface_table == nil then
+			current_surface_key = nil
+			current_entity_key = nil
+		elseif current_entity_key ~= nil and current_surface_table[current_entity_key] == nil then
+			current_entity_key = nil
+		end
+	end
+
+	if current_surface_table ~= nil then
+		local next_entity_key = next(current_surface_table, current_entity_key)
+		if next_entity_key ~= nil then
+			return current_surface_key, next_entity_key
+		end
+	end
+
+	local next_surface_key = next(storage.power_entities, current_surface_key)
+	while next_surface_key ~= nil do
+		local surface_table = storage.power_entities[next_surface_key]
+		if surface_table ~= nil then
+			local first_entity_key = next(surface_table, nil)
+			if first_entity_key ~= nil then
+				return next_surface_key, first_entity_key
+			end
+		end
+		next_surface_key = next(storage.power_entities, next_surface_key)
+	end
+
+	if current_surface_key ~= nil then
+		next_surface_key = next(storage.power_entities, nil)
+		while next_surface_key ~= nil and next_surface_key ~= current_surface_key do
+			local surface_table = storage.power_entities[next_surface_key]
+			if surface_table ~= nil then
+				local first_entity_key = next(surface_table, nil)
+				if first_entity_key ~= nil then
+					return next_surface_key, first_entity_key
+				end
+			end
+			next_surface_key = next(storage.power_entities, next_surface_key)
+		end
+	end
+
+	return nil, nil
+end
+
 function init_globals()
-	if global.entities == nil then
-		global.entities = {}
+	if storage.entities == nil then
+		storage.entities = {}
 	end
-	if global.power_entities == nil then
-		global.power_entities = {}
+	if storage.power_entities == nil then
+		storage.power_entities = {}
 	end
-	if global.sum_ticks == nil then global.sum_ticks = 0 end
-	if global.total_num_saved_items == nil then global.total_num_saved_items = 0 end
+	if storage.sum_ticks == nil then storage.sum_ticks = 0 end
+	if storage.total_num_saved_items == nil then storage.total_num_saved_items = 0 end
 
-	if global.saved_items == nil then
-		global.saved_items = {}
+	if storage.saved_items == nil then
+		storage.saved_items = {}
 	end
-	if global.saved_items_true == nil then
-		global.saved_items_true = {}
+	if storage.saved_items_true == nil then
+		storage.saved_items_true = {}
 	end
-	if global.saved_items_per_lane == nil then
-		global.saved_items_per_lane = {}
+	if storage.saved_items_per_lane == nil then
+		storage.saved_items_per_lane = {}
 	end
 	
-	if global.num_saved_items_per_lane == nil then
-		global.num_saved_items_per_lane = {}
+	if storage.num_saved_items_per_lane == nil then
+		storage.num_saved_items_per_lane = {}
 	end
 	
-	if global.spilled_items == nil then
-		global.spilled_items = {}
+	if storage.spilled_items == nil then
+		storage.spilled_items = {}
 	end
 
-	if not global.player_forces then global.player_forces = {} end
+	if not storage.player_forces then storage.player_forces = {} end
 
-	global.belt_check_interval = 0.05
-	global.belt_interval = 0.25
-	global.ground_lanes_max_check = 1.0
-	global.fill_trial_interval = 0.025
-	global.ver = 110
+	migrate_surface_partition("entities")
+	migrate_surface_partition("power_entities")
+	prune_deleted_surfaces()
+
+	storage.tick_iterator_key = nil
+	storage.tick_surface_iterator_key = nil
+
+	storage.belt_check_interval = 0.05
+	storage.belt_interval = 0.25
+	storage.ground_lanes_max_check = 1.0
+	storage.fill_trial_interval = 0.025
+	storage.ver = current_version
 end
 
 ---- INIT ----
@@ -40,11 +205,15 @@ script.on_init(function()
 	init_globals()
 end)
 
+script.on_configuration_changed(function()
+	init_globals()
+end)
+
 function get_correct_belt_level(force)
 	local force_name = force.name
 	local belt_level = 0
-	if global.player_forces[force_name] and global.player_forces[force_name]['belt_level'] then
-		belt_level = global.player_forces[force_name]['belt_level']
+	if storage.player_forces[force_name] and storage.player_forces[force_name]['belt_level'] then
+		belt_level = storage.player_forces[force_name]['belt_level']
 	end
 	return belt_level
 end
@@ -60,11 +229,13 @@ function tech_check(event)
 	if string.match(event.research.name, "efficient%-belts%-") then
 		local force_name = event.research.force.name
 		
-		if global.player_forces[force_name] == nil then
-			global.player_forces[force_name] = {}
+		if storage.player_forces[force_name] == nil then
+			storage.player_forces[force_name] = {}
 		end
 		local tech_level = extract_number_from_string(event.research.name)
-		global.player_forces[force_name]['belt_level'] = tech_level
+		if tech_level ~= nil then
+			storage.player_forces[force_name]['belt_level'] = tech_level
+		end
 	end
 end
 
@@ -84,18 +255,25 @@ function get_entity_idx_from_position(position)
 	return position.x .. " " .. position.y
 end
 
-function clear_power_entity(pos)
-	if global.power_entities[pos] ~= nil then
-		global.power_entities[pos].destroy()
-		global.power_entities[pos] = nil
+function clear_power_entity(pos, surface)
+	local surface_key, _, power_entities_by_surface = get_surface_tables(surface, false)
+	if power_entities_by_surface ~= nil and power_entities_by_surface[pos] ~= nil then
+		local ent = power_entities_by_surface[pos]
+		if ent.valid then
+			ent.destroy()
+		end
+		power_entities_by_surface[pos] = nil
+		cleanup_empty_surface_tables(surface_key)
 	end
 end
 
-function clear_tile(pos)
-	if global.entities[pos] ~= nil then
-		global.entities[pos] = nil
+function clear_tile(pos, surface)
+	local surface_key, entities_by_surface, _ = get_surface_tables(surface, false)
+	if entities_by_surface ~= nil and entities_by_surface[pos] ~= nil then
+		entities_by_surface[pos] = nil
     end
-	clear_power_entity(pos)
+	clear_power_entity(pos, surface)
+	cleanup_empty_surface_tables(surface_key)
 end
 
 function get_correct_power_entity_name(base_name, force)
@@ -108,12 +286,13 @@ end
 
 function create_power_entity(base_name, surface, position, force, direction, base_name_is_correct)
 	local pos = get_entity_idx_from_position(position)
-	clear_power_entity(pos)
+	clear_power_entity(pos, surface)
 	local name = base_name
 	if not base_name_is_correct then
-		name = get_correct_power_entity_name(base_name)
+		name = get_correct_power_entity_name(base_name, force)
 	end
-	global.power_entities[pos] = surface.create_entity{
+	local _, _, power_entities_by_surface = get_surface_tables(surface, true)
+	power_entities_by_surface[pos] = surface.create_entity{
 		name = name,
 		position = position,
 		force = force,
@@ -124,7 +303,7 @@ end
 
 function extract_base_name_from_entity_to_power(name)
 	local base_name = name
-	if string.match(name, "unpowered%-") then
+	if string.match(name, "^unpowered%-") then
 		base_name = string.sub(name, 11)
 	end
 	return base_name
@@ -144,7 +323,7 @@ function find_all_entities_to_power_at_position(surface, position, radius)
 	local entities = surface.find_entities_filtered{position=position, radius=radius}
 	local entities_to_power = {}
 	for k,v in pairs(entities) do
-		if (not string.endswith(v.name, '-power')) and (v.type == 'transport-belt' or v.type == 'underground-belt' or v.type == 'splitter' or v.type == 'loader' or v.type == 'loader-1x1') then
+		if (not string.endswith(v.name, '-power')) and belt_entity_types[v.type] then
 			entities_to_power[get_entity_idx(v)] = v
 			--game.print("ent: " .. get_entity_idx(v))
 		end
@@ -154,52 +333,56 @@ end
 
 function init_entity(entity)
 	local pos = get_entity_idx(entity)
-	clear_tile(pos)
+	clear_tile(pos, entity.surface)
+	local _, entities_by_surface, power_entities_by_surface = get_surface_tables(entity.surface, true)
 	local correct_name = get_correct_power_entity_name(extract_base_name_from_entity_to_power(entity.name), entity.force)
-	global.power_entities[pos] = entity.surface.create_entity{
+	power_entities_by_surface[pos] = entity.surface.create_entity{
 		name = correct_name,
 		position = entity.position,
 		force = entity.force,
 		direction = entity.direction,
 		destructible = false
 	}
-	global.entities[pos] = entity
+	entities_by_surface[pos] = entity
 end
 
 function find_all_entities_powered()
 	game.print("Checking entities to be powered..")
-
-	local surface = game.player.surface
-	local types = {'transport-belt', 'underground-belt', 'splitter', 'loader'}
-	local entities = surface.find_entities_filtered{type = types}
 
 	local num_wrongly_present_and_valid = 0
 	local num_wrongly_present = 0
 	local num_nil = 0
 	local num_entity_invalid = 0
 	local num_init = 0
-	
-	for k,v in pairs(entities) do
-		if v.valid then
-			
-			local pos = get_entity_idx(v)
 
-			if global.entities[pos] ~= v then
-				if global.entities[pos] == nil then
-					num_nil = num_nil + 1
-
-				elseif global.entities[pos].valid then
-					num_wrongly_present_and_valid = num_wrongly_present_and_valid + 1
-				else
-					num_wrongly_present = num_wrongly_present + 1
+	for _, surface in pairs(game.surfaces) do
+		local surface_key = get_surface_key(surface)
+		local entities = surface.find_entities_filtered{type = belt_entity_type_list}
+		for _, v in pairs(entities) do
+			if v.valid then
+				local pos = get_entity_idx(v)
+				local entities_by_surface = storage.entities[surface_key]
+				local stored_entity = nil
+				if entities_by_surface ~= nil then
+					stored_entity = entities_by_surface[pos]
 				end
-				init_entity(v)
-				num_init = num_init + 1
+				if stored_entity ~= v then
+					if stored_entity == nil then
+						num_nil = num_nil + 1
+					elseif stored_entity.valid then
+						num_wrongly_present_and_valid = num_wrongly_present_and_valid + 1
+					else
+						num_wrongly_present = num_wrongly_present + 1
+					end
+					init_entity(v)
+					num_init = num_init + 1
+				end
+			else
+				num_entity_invalid = num_entity_invalid + 1
 			end
-		else
-			num_entity_invalid = num_entity_invalid + 1
 		end
 	end
+
 	if num_entity_invalid > 0 then game.print("Warning: num entity invalid: " .. num_entity_invalid) end
 	--game.print("Num nil: " .. num_nil)
 	if num_wrongly_present > 0 then game.print("Warning: num wrongly present (invalid): " .. num_wrongly_present) end
@@ -210,54 +393,64 @@ end
 function find_all_power_entities()
 	find_all_entities_powered()
 	game.print("Checking power entities..")
-	local surface = game.player.surface
-	local entities = surface.find_entities_filtered{type = 'electric-energy-interface'}
-	local power_entities_temp = {}
 	local num_destroyed_entities = 0
-	for k,v in pairs(entities) do
-		if string.endswith(v.name, '-power') then
-			local pos = get_entity_idx(v)
-			local valid_entity = true
-			if power_entities_temp[pos] ~= nil then
-				game.print('Warning: double power entity (destroying it now) at position: ' .. pos)
-				v.destroy()
-				valid_entity = false
-				num_destroyed_entities = num_destroyed_entities + 1
-			end
-			local entities_to_power = nil
-			if valid_entity then
-				entities_to_power = find_all_entities_to_power_at_position(surface, v.position, 1)
-				if entities_to_power[pos] == nil then
-					--game.print("Warning: ... entity to be powered DOES NOT exist the position of power entity (removing power entity now), position: " .. pos)
+	for _, surface in pairs(game.surfaces) do
+		local surface_key = get_surface_key(surface)
+		local entities = surface.find_entities_filtered{type = "electric-energy-interface"}
+		local power_entities_temp = {}
+		for _, v in pairs(entities) do
+			if string.endswith(v.name, '-power') then
+				local pos = get_entity_idx(v)
+				local valid_entity = true
+				if power_entities_temp[pos] ~= nil then
+					game.print('Warning: double power entity (destroying it now) at position: ' .. pos)
 					v.destroy()
-					global.power_entities[pos] = nil
-					global.entities[pos] = nil
-					valid_entity = false
-					num_destroyed_entities = num_destroyed_entities + 1
-				end
-			end
-			if valid_entity and global.entities[pos] == nil then
-				game.print('Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos)
-				
-				if entities_to_power[pos] ~= nil then -- entities_to_power won't be nil because valid_entity check as when setting entities_to_power
-					game.print("Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos].name)
-					global.entities[pos] = entities_to_power[pos]
-				else
-					game.print("Warning: ... AND entity to be powered DOES NOT exist at this position (removing power entity now)!")
-					v.destroy()
-					global.power_entities[pos] = nil
 					valid_entity = false
 					num_destroyed_entities = num_destroyed_entities + 1
 				end
 				
-			
-			elseif valid_entity and global.power_entities[pos] ~= v and valid_entity then
-				game.print('Warning: this power entity does not have entry in power entities table, position: (assigning it now)' .. pos)
-				global.power_entities[pos] = v
+				local entities_to_power = nil
+				if valid_entity then
+					entities_to_power = find_all_entities_to_power_at_position(surface, v.position, 1)
+					if entities_to_power[pos] == nil then
+						--game.print("Warning: ... entity to be powered DOES NOT exist the position of power entity (removing power entity now), position: " .. pos)
+						v.destroy()
+						local entities_by_surface = storage.entities[surface_key]
+						local power_entities_by_surface = storage.power_entities[surface_key]
+						if power_entities_by_surface ~= nil then power_entities_by_surface[pos] = nil end
+						if entities_by_surface ~= nil then entities_by_surface[pos] = nil end
+						valid_entity = false
+						num_destroyed_entities = num_destroyed_entities + 1
+					end
+				end
+				local entities_by_surface = storage.entities[surface_key]
+				local power_entities_by_surface = storage.power_entities[surface_key]
+				if valid_entity and (entities_by_surface == nil or entities_by_surface[pos] == nil) then
+					game.print('Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos)
+					
+					if entities_to_power[pos] ~= nil then -- entities_to_power won't be nil because valid_entity check as when setting entities_to_power
+						game.print("Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos].name)
+						local _, entities_by_surface_new = get_surface_tables(surface, true)
+						entities_by_surface_new[pos] = entities_to_power[pos]
+					else
+						game.print("Warning: ... AND entity to be powered DOES NOT exist at this position (removing power entity now)!")
+						v.destroy()
+						if power_entities_by_surface ~= nil then power_entities_by_surface[pos] = nil end
+						valid_entity = false
+						num_destroyed_entities = num_destroyed_entities + 1
+					end
+					
+				
+				elseif valid_entity and (power_entities_by_surface == nil or power_entities_by_surface[pos] ~= v) then
+					game.print('Warning: this power entity does not have entry in power entities table, position: (assigning it now)' .. pos)
+					local _, _, power_entities_by_surface_new = get_surface_tables(surface, true)
+					power_entities_by_surface_new[pos] = v
+				end
+				
+				if valid_entity then power_entities_temp[pos] = v end
 			end
-			
-			if valid_entity then power_entities_temp[pos] = v end
 		end
+		cleanup_empty_surface_tables(surface_key)
 	end
 
 	game.print("PBE_CheckPowerEntities command cleaned up: " .. num_destroyed_entities .. " power entities.")
@@ -267,19 +460,28 @@ end
 
 
 ---- ON EVENT ----
-script.on_event({defines.events.on_robot_built_entity, defines.events.on_built_entity}, function(event)
-	if event.created_entity.type == "transport-belt" or event.created_entity.type == "underground-belt" or event.created_entity.type == "splitter" or event.created_entity.type == "loader-1x1" or event.created_entity.type == "loader" then
-		init_entity(event.created_entity)
+script.on_event({
+	defines.events.on_robot_built_entity,
+	defines.events.on_built_entity,
+	defines.events.script_raised_built,
+	defines.events.script_raised_revive,
+}, function(event)
+	local entity = event.entity
+	if entity and belt_entity_types[entity.type] then
+		init_entity(entity)
 	end
 end)
 
 script.on_event({
 	defines.events.on_entity_died,
-	defines.events.on_robot_pre_mined,
-	defines.events.on_pre_player_mined_item,
+	defines.events.on_robot_mined_entity,
+	defines.events.on_player_mined_entity,
+	defines.events.script_raised_destroy,
 	}, function(event)
-	local pos = get_entity_idx(event.entity)
-    clear_tile(pos)
+	if event.entity then
+		local pos = get_entity_idx(event.entity)
+		clear_tile(pos, event.entity.surface)
+	end
 end)
 
 function underground_length(underground)
@@ -297,9 +499,9 @@ end
 
 function lane_max_check(underground, lane_idx, underground_len)
 	if lane_idx == 1 or lane_idx == 2 then
-		return global.ground_lanes_max_check
+		return storage.ground_lanes_max_check
 	end
-	return global.ground_lanes_max_check + underground_len - 1.0
+	return storage.ground_lanes_max_check + underground_len - 1.0
 end
 
 function position_capturing_algorithm(lane, max_check)
@@ -319,14 +521,14 @@ function position_capturing_algorithm(lane, max_check)
 				items[#items+1] = last_item
 			end
 		else
-			current_check = current_check + global.belt_check_interval
+			current_check = current_check + storage.belt_check_interval
 		end
 	end
 	
 	if #lane ~= 0 then
 	
 		local space_left = max_check - current_check
-		local space_required = (#lane + 1) * global.belt_interval
+		local space_required = (#lane + 1) * storage.belt_interval
 		local space_to_make = space_required - space_left
 		
 		if space_to_make > 0 then
@@ -341,7 +543,7 @@ function position_capturing_algorithm(lane, max_check)
 		end
 		local num_left_items = #lane
 		for _ = 1, num_left_items do
-			current_check = current_check + global.belt_interval
+			current_check = current_check + storage.belt_interval
 			last_item = lane[1].name
 			removed = lane.remove_item(lane[1])
 			if removed == 0 then
@@ -482,7 +684,7 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 	--]]
 	local current_check = 0.0
 	if positions and #positions > 0 and obey_positions then
-		current_check = positions[starting_item_idx] - (global.belt_interval * 2)
+		current_check = positions[starting_item_idx] - (storage.belt_interval * 2)
 	end
 	current_check = math.max(0.0, current_check)
 	
@@ -493,12 +695,12 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 		item = items[item_idx]
 		local position = positions[item_idx]
 		if obey_positions then
-			current_check = math.max(position - (global.belt_interval * 2) - (global.fill_trial_interval * 2 * inserted), current_check)
+			current_check = math.max(position - (storage.belt_interval * 2) - (storage.fill_trial_interval * 2 * inserted), current_check)
 		end
 		can_insert = lane.can_insert_at(current_check)
 		if (not can_insert) then
 			while (current_check < max_check and (not can_insert)) do
-				current_check = current_check + global.fill_trial_interval
+				current_check = current_check + storage.fill_trial_interval
 				current_check = math.min(current_check, max_check+0.01)
 				can_insert = lane.can_insert_at(current_check)
 			end
@@ -506,7 +708,7 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 		if can_insert then
 			lane.insert_at(current_check, item)
 			inserted = inserted + 1
-			add_count(global.saved_items, item, 1)
+			add_count(storage.saved_items, item, 1)
 			
 		else
 			break
@@ -541,21 +743,21 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 		for item_idx = starting_item_idx+inserted, #items do
 			item = items[item_idx]
 			
-			add_count(global.spilled_items, item, 1)
-			add_count(global.saved_items, item, 1)
+			add_count(storage.spilled_items, item, 1)
+			add_count(storage.saved_items, item, 1)
 			add_count(counts, item, 1)
 			c = c + 1
 		end
 		
-		add_count(global.spilled_items, '_total', c)
+		add_count(storage.spilled_items, '_total', c)
 		
 		game.print("Spilled " .. c .. " items at  x=" .. underground.position.x .. ", y=" .. underground.position.y .. ": ")
 		for k,v in pairs(counts) do
-			underground.surface.spill_item_stack(underground.position, {name=k, count=v}, true, underground.force, false)
+			underground.surface.spill_item_stack{position=underground.position, stack={name=k, count=v}, enable_looted=true, force=underground.force, allow_belts=false}
 		end
 		game.print(collection_to_string(counts))
 	end
-	add_count(global.saved_items, '_total', inserted + c)
+	add_count(storage.saved_items, '_total', inserted + c)
 end
 
 function get_max_lane_idx(underground)
@@ -584,7 +786,7 @@ function get_saved_items(underground, lanes_items)
 			num_saved_items_per_lane[get_lane_identifier(underground, lane_idx)] = #items
 			
 			for item_idx = 1, #items do
-				item = items[item_idx]
+				local item = items[item_idx]
 				add_count(saved_items, item, 1)
 				add_count(saved_items_per_lane[get_lane_identifier(underground, lane_idx)], item, 1)
 			end
@@ -661,7 +863,7 @@ function check_lanes(underground, neighbour, lanes_items, lanes_items_n)
 	local saved_items, saved_items_per_lane, num_saved_items_per_lane, num_saved_items = get_saved_items(underground, lanes_items)
 	local extra_items_n, extra_items_per_lane_n, num_extra_items_per_lane_n, num_extra_items_n = nil, nil, nil, 0 
 	if neighbour and neighbour.valid and lanes_items_n then
-		local saved_items_n, saved_items_per_lane_n, num_saved_items_per_lane_n, num_saved_items_n = get_saved_items(neighbour, lanes_items)
+		local saved_items_n, saved_items_per_lane_n, num_saved_items_per_lane_n, num_saved_items_n = get_saved_items(neighbour, lanes_items_n)
 		add_counter(saved_items, saved_items_n)
 		update_collection(saved_items_per_lane, saved_items_per_lane_n)
 		update_collection(num_saved_items_per_lane, num_saved_items_per_lane_n)
@@ -687,12 +889,12 @@ function check_lanes(underground, neighbour, lanes_items, lanes_items_n)
 	end
 	
 	for k, v in pairs(saved_items_per_lane) do
-		add_counter_create_key(global.saved_items_per_lane, v, k)
+		add_counter_create_key(storage.saved_items_per_lane, v, k)
 	end
 	
-	add_counter(global.num_saved_items_per_lane, num_saved_items_per_lane)
-	add_counter(global.saved_items_true, saved_items)
-	global.total_num_saved_items = global.total_num_saved_items + num_saved_items
+	add_counter(storage.num_saved_items_per_lane, num_saved_items_per_lane)
+	add_counter(storage.saved_items_true, saved_items)
+	storage.total_num_saved_items = storage.total_num_saved_items + num_saved_items
 	
 end
 
@@ -718,7 +920,7 @@ function fill_lanes(underground, lanes_items, lanes_positions, underground_len, 
 	end
 end
 
-function call_replace(entity_idx, entity_data)
+function call_replace(surface, entity_idx, entity_data)
 	local new_entity = entity_data.surface.create_entity{
 		name = entity_data.new_name,
 		position = entity_data.position,
@@ -729,12 +931,13 @@ function call_replace(entity_idx, entity_data)
 		spill = false
 	}
 	
-	global.entities[entity_idx] = new_entity
+	local _, entities_by_surface = get_surface_tables(surface, true)
+	entities_by_surface[entity_idx] = new_entity
 	return new_entity
 	
 end
 
-function replace_entity(entity, entity_idx, check_for_neighbour, power_up, underground_len, clear_ground_lanes, capture_positions)
+function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_up, underground_len, clear_ground_lanes, capture_positions)
 	local entity_data = {surface = entity.surface, name = entity.name, position = entity.position, force = entity.force, direction = entity.direction}
 	local is_underground = entity.type == "underground-belt"
 	local n = nil
@@ -762,24 +965,29 @@ function replace_entity(entity, entity_idx, check_for_neighbour, power_up, under
 	
 	if neighbour_cond then
 		neighbour_idx = get_entity_idx(n)
-		n_lanes_items, n_lanes_positions = run_for_entity(n, neighbour_idx, false, underground_len, power_up, not power_up, clear_ground_lanes, capture_positions)
+		n_lanes_items, n_lanes_positions = run_for_entity(n, surface, neighbour_idx, false, underground_len, power_up, not power_up, clear_ground_lanes, capture_positions)
 		--n_lanes_items, n_lanes_positions = replace_entity(n, neighbour_idx, false, power_up, underground_len, clear_ground_lanes, capture_positions)
 	end
 	
-	local new_entity = call_replace(entity_idx, entity_data)
+	local new_entity = call_replace(surface, entity_idx, entity_data)
+	local _, entities_by_surface = get_surface_tables(surface, false)
 	
 	if is_underground then
 		if neighbour_cond then
-			check_lanes(new_entity, global.entities[neighbour_idx], lanes_items, n_lanes_items)
+			local neighbour_entity = nil
+			if entities_by_surface ~= nil then
+				neighbour_entity = entities_by_surface[neighbour_idx]
+			end
+			check_lanes(new_entity, neighbour_entity, lanes_items, n_lanes_items)
 			if new_entity.belt_to_ground_type == "input" then
 				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, clear_ground_lanes)
-				if n_lanes_items ~= nil and n_lanes_positions ~= nil then
-					fill_lanes(global.entities[neighbour_idx], n_lanes_items, n_lanes_positions, underground_len, clear_ground_lanes)
+				if n_lanes_items ~= nil and n_lanes_positions ~= nil and neighbour_entity ~= nil then
+					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len, clear_ground_lanes)
 				end
 				
 			else
-				if n_lanes_items ~= nil and n_lanes_positions ~= nil then
-					fill_lanes(global.entities[neighbour_idx], n_lanes_items, n_lanes_positions, underground_len, clear_ground_lanes)
+				if n_lanes_items ~= nil and n_lanes_positions ~= nil and neighbour_entity ~= nil then
+					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len, clear_ground_lanes)
 				end
 				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, clear_ground_lanes)
 				
@@ -796,38 +1004,21 @@ function replace_entity(entity, entity_idx, check_for_neighbour, power_up, under
 
 end
 
-function run_for_entity(entity, entity_idx, check_for_neighbour, underground_len, powerup_n, powerdown_n, clear_ground_lanes, capture_positions)
-	--[[
-	local is_underground = entity.type == "underground-belt"
-	local n = nil
-	local powerup_n = true
-	local powerdown_n = true
-	local neighbour_idx = nil
-	
-	if is_underground and check_for_neighbour then
-		n = entity.neighbours
-		if n ~= nil then
-			neighbour_idx = get_entity_idx(n)
-			powerup_n = global.power_entities[neighbour_idx].energy > settings.global["powered-belts-required-energy"].value
-			powerdown_n = not powerup_n
-		end
-		
-			powerup_n = global.power_entities[entity_idx].energy > settings.global["powered-belts-required-energy"].value
-		powerdown_n = not powerup_n
-	end
-	--]]
-	
-	
+function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underground_len, powerup_n, powerdown_n, clear_ground_lanes, capture_positions)
 	-- TODO/IDEA: only powered up when both neighbours powered up? otherwise both power down?
-	if entity.valid and global.entities[entity_idx] ~= nil then
-		check_and_replace_power_entity(entity, global.power_entities[entity_idx])
-		local power_entity = global.power_entities[entity_idx]
+	local _, entities_by_surface, power_entities_by_surface = get_surface_tables(surface, true)
+	if entity.valid and entities_by_surface ~= nil and entities_by_surface[entity_idx] ~= nil then
+		check_and_replace_power_entity(entity, power_entities_by_surface and power_entities_by_surface[entity_idx] or nil)
+		local power_entity = power_entities_by_surface and power_entities_by_surface[entity_idx] or nil
+		if power_entity == nil or (not power_entity.valid) then
+			return nil, nil
+		end
 		local required_energy = math.min(settings.global["powered-belts-required-energy"].value, power_entity.electric_buffer_size * 0.75)
-		if string.match(entity.name, "unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
-			return replace_entity(entity, entity_idx, check_for_neighbour, true, underground_len, clear_ground_lanes, capture_positions)
+		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
+			return replace_entity(entity, surface, entity_idx, check_for_neighbour, true, underground_len, clear_ground_lanes, capture_positions)
 			
-		elseif (not string.match(entity.name, "unpowered%-")) and (power_entity.energy < required_energy or powerdown_n) then
-			return replace_entity(entity, entity_idx, check_for_neighbour, false, underground_len, clear_ground_lanes, capture_positions)
+		elseif (not string.match(entity.name, "^unpowered%-")) and (power_entity.energy < required_energy or powerdown_n) then
+			return replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len, clear_ground_lanes, capture_positions)
 		end
 	end
 	return nil, nil
@@ -837,30 +1028,46 @@ end
 
 ---- ON TICK ----
 script.on_event(defines.events.on_tick, function(event)
-	if global.ver ~= 110 then
+	if storage.ver ~= current_version then
 		init_globals()
 	end
-	global.sum_ticks = global.sum_ticks + 1
-    if global.power_entities ~= nil and global.entities ~= nil and next(global.power_entities) and next(global.entities) then
-	
-        for _ = 1, settings.global["powered-belts-operations-per-tick"].value do
-            
-			if next(global.power_entities) ~= nil and next(global.entities) ~= nil then
-			
-                if next(global.power_entities, k) == nil then
-					k,_ = next(global.power_entities, nil) 
-				else 
-					k,_ = next(global.power_entities, k) 
+	storage.sum_ticks = storage.sum_ticks + 1
+    if storage.power_entities ~= nil and storage.entities ~= nil and next(storage.power_entities) then
+		for _ = 1, settings.global["powered-belts-operations-per-tick"].value do
+			local surface_key, entity_key = get_next_power_entity_iterator()
+			if surface_key == nil or entity_key == nil then
+				storage.tick_surface_iterator_key = nil
+				storage.tick_iterator_key = nil
+				break
+			end
+			local surface = game.surfaces[surface_key]
+			local entities_by_surface = storage.entities[surface_key]
+			local power_entities_by_surface = storage.power_entities[surface_key]
+			local entity = entities_by_surface and entities_by_surface[entity_key] or nil
+			if surface == nil then
+				storage.entities[surface_key] = nil
+				storage.power_entities[surface_key] = nil
+			elseif entity == nil or (not entity.valid) then
+				clear_tile(entity_key, surface)
+			elseif power_entities_by_surface ~= nil and power_entities_by_surface[entity_key] ~= nil then
+				run_for_entity(entity, surface, entity_key, true, underground_length(entity), false, false, true, true)
+			end
+			if storage.power_entities[surface_key] ~= nil and storage.power_entities[surface_key][entity_key] ~= nil then
+				storage.tick_surface_iterator_key = surface_key
+				storage.tick_iterator_key = entity_key
+			else
+				if storage.power_entities[surface_key] ~= nil then
+					storage.tick_surface_iterator_key = surface_key
+				else
+					storage.tick_surface_iterator_key = nil
 				end
-				if global.entities[k].valid then
-					run_for_entity(global.entities[k], k, true, underground_length(global.entities[k]), false, false, true, true)
-				end
-            end
-        end
-    end
+				storage.tick_iterator_key = nil
+			end
+		end
+	end
 end)
 script.on_event({defines.events.on_research_finished}, tech_check)
-commands.add_command("PBE_CheckPowerEntities", "Checks and cleans power entities on the player's surface", find_all_power_entities)
+commands.add_command("PBE_CheckPowerEntities", "Checks and cleans power entities on all surfaces", find_all_power_entities)
 remote.add_interface("powered_belts_extended", {
-  get_global = function() return global end
+  get_storage = function() return storage end
 })

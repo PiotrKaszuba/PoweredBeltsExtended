@@ -6,7 +6,7 @@ data:extend(
   {
     type = "technology",
     name = "efficient-belts-1",
-    icon_size = 64, icon_mipmaps = 1,
+    icon_size = 64,
     icon = efficient_belts_icon,
     --util.technology_icon_constant_speed(efficient_belts_icon),
     effects =
@@ -33,7 +33,7 @@ data:extend(
   {
     type = "technology",
     name = "efficient-belts-2",
-    icon_size = 64, icon_mipmaps = 1,
+    icon_size = 64,
     icon = efficient_belts_icon,
     effects =
     {
@@ -59,7 +59,7 @@ data:extend(
 	{
     type = "technology",
     name = "efficient-belts-3",
-    icon_size = 64, icon_mipmaps = 1,
+    icon_size = 64,
     icon = efficient_belts_icon,
     effects =
     {
@@ -86,7 +86,7 @@ data:extend(
   {
     type = "technology",
     name = "efficient-belts-4",
-    icon_size = 64, icon_mipmaps = 1,
+    icon_size = 64,
     icon = efficient_belts_icon,
     effects =
     {
@@ -114,7 +114,7 @@ data:extend(
    {
     type = "technology",
     name = "efficient-belts-5",
-    icon_size = 64, icon_mipmaps = 1,
+    icon_size = 64,
     icon = efficient_belts_icon,
     effects =
     {

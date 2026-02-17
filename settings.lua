@@ -21,6 +21,7 @@ data:extend({
         setting_type = "runtime-global",
         default_value = 500,
         minimum_value = 0,
+        hidden = true,
         order = "a"
     },
     --[[
