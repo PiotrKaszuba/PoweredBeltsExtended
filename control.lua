@@ -203,10 +203,12 @@ end
 ---- INIT ----
 script.on_init(function()
 	init_globals()
+	find_all_power_entities()
 end)
 
 script.on_configuration_changed(function()
 	init_globals()
+	find_all_power_entities()
 end)
 
 function get_correct_belt_level(force)
@@ -354,14 +356,18 @@ function find_all_entities_powered()
 	local num_nil = 0
 	local num_entity_invalid = 0
 	local num_init = 0
+	local num_stale_entries = 0
 
 	for _, surface in pairs(game.surfaces) do
 		local surface_key = get_surface_key(surface)
 		local entities = surface.find_entities_filtered{type = belt_entity_type_list}
+		local seen_positions = {}
 		for _, v in pairs(entities) do
 			if v.valid then
 				local pos = get_entity_idx(v)
+				seen_positions[pos] = true
 				local entities_by_surface = storage.entities[surface_key]
+				local power_entities_by_surface = storage.power_entities[surface_key]
 				local stored_entity = nil
 				if entities_by_surface ~= nil then
 					stored_entity = entities_by_surface[pos]
@@ -376,17 +382,36 @@ function find_all_entities_powered()
 					end
 					init_entity(v)
 					num_init = num_init + 1
+				else
+					check_and_replace_power_entity(v, power_entities_by_surface and power_entities_by_surface[pos] or nil)
 				end
 			else
 				num_entity_invalid = num_entity_invalid + 1
 			end
 		end
+
+		local entities_by_surface = storage.entities[surface_key]
+		if entities_by_surface ~= nil then
+			local stale_positions = {}
+			for pos, _ in pairs(entities_by_surface) do
+				if not seen_positions[pos] then
+					stale_positions[#stale_positions + 1] = pos
+				end
+			end
+			for _, pos in pairs(stale_positions) do
+				clear_tile(pos, surface)
+				num_stale_entries = num_stale_entries + 1
+			end
+		end
+
+		cleanup_empty_surface_tables(surface_key)
 	end
 
 	if num_entity_invalid > 0 then game.print("Warning: num entity invalid: " .. num_entity_invalid) end
 	--game.print("Num nil: " .. num_nil)
 	if num_wrongly_present > 0 then game.print("Warning: num wrongly present (invalid): " .. num_wrongly_present) end
 	if num_wrongly_present_and_valid > 0 then game.print("Warning: num wrongly present and valid: " .. num_wrongly_present_and_valid) end
+	if num_stale_entries > 0 then game.print("Warning: num stale entity-table entries removed: " .. num_stale_entries) end
 	game.print("PBE_CheckPowerEntities command repaired: " .. num_init .. " entities.")
 end
 
@@ -394,8 +419,44 @@ function find_all_power_entities()
 	find_all_entities_powered()
 	game.print("Checking power entities..")
 	local num_destroyed_entities = 0
+	local num_remapped_power_entries = 0
+	local num_removed_invalid_power_entries = 0
 	for _, surface in pairs(game.surfaces) do
 		local surface_key = get_surface_key(surface)
+		local power_entities_by_surface = storage.power_entities[surface_key]
+		if power_entities_by_surface ~= nil then
+			local remove_keys = {}
+			local remap_entries = {}
+			for stored_pos, stored_entity in pairs(power_entities_by_surface) do
+				if stored_entity == nil or (not stored_entity.valid) then
+					remove_keys[#remove_keys + 1] = stored_pos
+					num_removed_invalid_power_entries = num_removed_invalid_power_entries + 1
+				elseif stored_entity.surface ~= surface then
+					remove_keys[#remove_keys + 1] = stored_pos
+					local target_pos = get_entity_idx(stored_entity)
+					local _, _, target_power_entities_by_surface = get_surface_tables(stored_entity.surface, true)
+					if target_power_entities_by_surface[target_pos] == nil then
+						target_power_entities_by_surface[target_pos] = stored_entity
+					end
+					num_remapped_power_entries = num_remapped_power_entries + 1
+				else
+					local actual_pos = get_entity_idx(stored_entity)
+					if actual_pos ~= stored_pos then
+						remove_keys[#remove_keys + 1] = stored_pos
+						remap_entries[#remap_entries + 1] = {pos = actual_pos, entity = stored_entity}
+						num_remapped_power_entries = num_remapped_power_entries + 1
+					end
+				end
+			end
+			for _, remove_key in pairs(remove_keys) do
+				power_entities_by_surface[remove_key] = nil
+			end
+			for _, remap_entry in pairs(remap_entries) do
+				if power_entities_by_surface[remap_entry.pos] == nil then
+					power_entities_by_surface[remap_entry.pos] = remap_entry.entity
+				end
+			end
+		end
 		local entities = surface.find_entities_filtered{type = "electric-energy-interface"}
 		local power_entities_temp = {}
 		for _, v in pairs(entities) do
@@ -453,6 +514,8 @@ function find_all_power_entities()
 		cleanup_empty_surface_tables(surface_key)
 	end
 
+	if num_removed_invalid_power_entries > 0 then game.print("Warning: removed invalid power-table entries: " .. num_removed_invalid_power_entries) end
+	if num_remapped_power_entries > 0 then game.print("Warning: remapped misplaced power-table entries: " .. num_remapped_power_entries) end
 	game.print("PBE_CheckPowerEntities command cleaned up: " .. num_destroyed_entities .. " power entities.")
 
 end

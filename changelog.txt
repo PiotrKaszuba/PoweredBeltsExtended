@@ -6,6 +6,7 @@ Date: 2026.2.17
     - Added multi-surface support.
     - Added migration for existing saves.
     - Fixes and improvements.
+    - Added more thorough consistency checks and fixes on init and configuration change.
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.0
 Date: 2024.8.12
