@@ -183,6 +183,12 @@ function init_globals()
 	if storage.spilled_items == nil then
 		storage.spilled_items = {}
 	end
+	if storage.preserve_mode_fallback_items == nil then
+		storage.preserve_mode_fallback_items = 0
+	end
+	if storage.preserve_mode_slot_overflow_items == nil then
+		storage.preserve_mode_slot_overflow_items = 0
+	end
 
 	if not storage.player_forces then storage.player_forces = {} end
 
@@ -567,11 +573,19 @@ function lane_max_check(underground, lane_idx, underground_len)
 	return storage.ground_lanes_max_check + underground_len - 1.0
 end
 
+local preserve_mode_temp_inventory_initial_size = 64
+local preserve_mode_temp_inventory_max_size = 65535
+
+local function preserve_mode_enabled()
+	local setting = settings.global["powered-belts-preserve-full-underground-stack-state"]
+	return setting ~= nil and setting.value == true
+end
+
 local function get_item_name_for_stats(item)
 	if type(item) == "string" then
 		return item
 	end
-	if type(item) == "table" and item.name ~= nil then
+	if item ~= nil and item.name ~= nil then
 		return item.name
 	end
 	return "_unknown-item"
@@ -588,7 +602,119 @@ local function append_items(items, positions, item_name, item_count, position)
 	end
 end
 
-function position_capturing_algorithm(lane, max_check)
+local function append_item_token(items, positions, token, position)
+	items[#items + 1] = token
+	positions[#positions + 1] = position
+end
+
+local function ensure_preserve_temp_inventory(replace_context)
+	if replace_context == nil or (not replace_context.preserve_mode) then
+		return false
+	end
+
+	if replace_context.temp_inventory ~= nil and replace_context.temp_inventory.valid then
+		return true
+	end
+
+	replace_context.temp_inventory = game.create_inventory(preserve_mode_temp_inventory_initial_size)
+	replace_context.temp_inventory_next_slot = 1
+	return replace_context.temp_inventory ~= nil and replace_context.temp_inventory.valid
+end
+
+local function reserve_preserve_temp_slot(replace_context)
+	if not ensure_preserve_temp_inventory(replace_context) then
+		return nil, nil
+	end
+
+	local inventory = replace_context.temp_inventory
+	local slot_idx = replace_context.temp_inventory_next_slot or 1
+
+	if slot_idx > preserve_mode_temp_inventory_max_size then
+		storage.preserve_mode_slot_overflow_items = (storage.preserve_mode_slot_overflow_items or 0) + 1
+		return nil, nil
+	end
+
+	if slot_idx > #inventory then
+		local resized_to = math.min(preserve_mode_temp_inventory_max_size, math.max(slot_idx, #inventory * 2))
+		inventory.resize(resized_to)
+	end
+
+	local slot = inventory[slot_idx]
+	if slot == nil then
+		storage.preserve_mode_slot_overflow_items = (storage.preserve_mode_slot_overflow_items or 0) + 1
+		return nil, nil
+	end
+
+	replace_context.temp_inventory_next_slot = slot_idx + 1
+	return slot_idx, slot
+end
+
+local function capture_line_item(lane, line_item, current_position, items, positions, replace_context)
+	if not (line_item and line_item.valid_for_read) then
+		return 0
+	end
+
+	local item_name = get_item_name_for_stats(line_item)
+	if replace_context == nil or (not replace_context.preserve_mode) then
+		local removed = lane.remove_item(line_item)
+		if removed > 0 then
+			append_items(items, positions, item_name, removed, current_position)
+		end
+		return removed
+	end
+
+	local removed = 0
+	while line_item.valid_for_read and line_item.count > 0 do
+		local slot_idx, slot = reserve_preserve_temp_slot(replace_context)
+		if slot_idx == nil or slot == nil then
+			break
+		end
+
+		local moved = slot.transfer_stack(line_item, 1)
+		if not moved then
+			break
+		end
+
+		removed = removed + 1
+		append_item_token(items, positions, {name = item_name, slot = slot_idx}, current_position)
+	end
+
+	if line_item.valid_for_read and line_item.count > 0 then
+		local fallback_removed = lane.remove_item(line_item)
+		if fallback_removed > 0 then
+			storage.preserve_mode_fallback_items = (storage.preserve_mode_fallback_items or 0) + fallback_removed
+			append_items(items, positions, item_name, fallback_removed, current_position)
+			removed = removed + fallback_removed
+		end
+	end
+
+	return removed
+end
+
+local function get_item_identification_for_transfer(item, replace_context)
+	if type(item) == "table" and item.slot ~= nil then
+		if replace_context ~= nil and replace_context.temp_inventory ~= nil and replace_context.temp_inventory.valid then
+			local slot = replace_context.temp_inventory[item.slot]
+			if slot ~= nil and slot.valid_for_read then
+				return slot, true
+			end
+		end
+		storage.preserve_mode_fallback_items = (storage.preserve_mode_fallback_items or 0) + 1
+		return get_item_name_for_stats(item), false
+	end
+	return item, false
+end
+
+local function consume_preserved_item_token(item, replace_context)
+	if type(item) == "table" and item.slot ~= nil and replace_context ~= nil and replace_context.temp_inventory ~= nil and replace_context.temp_inventory.valid then
+		local slot = replace_context.temp_inventory[item.slot]
+		if slot ~= nil and slot.valid_for_read then
+			slot.clear()
+		end
+	end
+end
+
+function position_capturing_algorithm(lane, max_check, replace_context)
 	if not (lane and lane.valid) then
 		return {}, {}
 	end
@@ -602,12 +728,9 @@ function position_capturing_algorithm(lane, max_check)
 			if not (line_item and line_item.valid_for_read) then
 				break
 			end
-			local item_name = get_item_name_for_stats(line_item)
-			removed = lane.remove_item(line_item)
+			removed = capture_line_item(lane, line_item, current_check, items, positions, replace_context)
 			if removed == 0 then
 				game.print("Warning: did not remove an item!")
-			else
-				append_items(items, positions, item_name, removed, current_check)
 			end
 		else
 			current_check = current_check + storage.belt_check_interval
@@ -640,12 +763,9 @@ function position_capturing_algorithm(lane, max_check)
 			if not (line_item and line_item.valid_for_read) then
 				break
 			end
-			local item_name = get_item_name_for_stats(line_item)
-			removed = lane.remove_item(line_item)
+			removed = capture_line_item(lane, line_item, current_check, items, positions, replace_context)
 			if removed == 0 then
 				game.print("Warning: did not remove an item!")
-			else
-				append_items(items, positions, item_name, removed, current_check)
 			end
 		
 		end
@@ -659,14 +779,14 @@ function position_capturing_algorithm(lane, max_check)
 	return items, positions
 end
 
-function check_and_clear_lane(lane, max_check)
+function check_and_clear_lane(lane, max_check, replace_context)
 	if not (lane and lane.valid) then
 		return {}, {}
 	end
-	return position_capturing_algorithm(lane, max_check)
+	return position_capturing_algorithm(lane, max_check, replace_context)
 end
 
-function check_and_clear_lanes(underground, underground_len)
+function check_and_clear_lanes(underground, underground_len, replace_context)
 	local n = underground.neighbours
 	
 	local lanes_items = {}
@@ -681,7 +801,7 @@ function check_and_clear_lanes(underground, underground_len)
 		--]]
 		if lane and lane.valid then
 			local max_check = lane_max_check(underground, lane_idx, underground_len)
-			local items, positions = check_and_clear_lane(lane, max_check)
+			local items, positions = check_and_clear_lane(lane, max_check, replace_context)
 			lanes_items[lane_idx] = items
 			lanes_positions[lane_idx] = positions
 		end
@@ -698,7 +818,7 @@ function check_and_clear_lanes(underground, underground_len)
 			--]]
 			if lane and lane.valid then
 				local max_check = lane_max_check(underground, lane_idx, underground_len)
-				local items, positions = check_and_clear_lane(lane, max_check)
+				local items, positions = check_and_clear_lane(lane, max_check, replace_context)
 				lanes_items[lane_idx] = items
 				lanes_positions[lane_idx] = positions
 			end
@@ -724,7 +844,7 @@ function collection_to_string(collection)
 	return val
 end
 
-function fill_lane(underground, lane_idx, items, positions, starting_item_idx, obey_positions, underground_len)
+function fill_lane(underground, lane_idx, items, positions, starting_item_idx, obey_positions, underground_len, replace_context)
 	local max_check = lane_max_check(underground, lane_idx, underground_len)
 	local lane = underground.get_transport_line(lane_idx)
 	if not (lane and lane.valid) then
@@ -763,9 +883,16 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 			end
 		end
 		if can_insert then
-			lane.insert_at(current_check, item)
-			inserted = inserted + 1
-			add_count(storage.saved_items, item_name, 1)
+			local item_identification, requires_consume = get_item_identification_for_transfer(item, replace_context)
+			if lane.insert_at(current_check, item_identification) then
+				if requires_consume then
+					consume_preserved_item_token(item, replace_context)
+				end
+				inserted = inserted + 1
+				add_count(storage.saved_items, item_name, 1)
+			else
+				break
+			end
 			
 		else
 			break
@@ -796,22 +923,42 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 		-- game.print("Warning: unable to insert items. Inserted " .. inserted .. ", left to insert: " .. #items - inserted .. ", max_check " .. max_check .. ",ulen " .. underground_len .. ", curr_check " .. current_check) 
 		
 		local counts = {}
+		local grouped_spills = {}
 		
 		for item_idx = starting_item_idx+inserted, #items do
 			item = items[item_idx]
 			local item_name = get_item_name_for_stats(item)
+			local item_identification, requires_consume = get_item_identification_for_transfer(item, replace_context)
 			
 			add_count(storage.spilled_items, item_name, 1)
 			add_count(storage.saved_items, item_name, 1)
 			add_count(counts, item_name, 1)
+			if requires_consume then
+				underground.surface.spill_item_stack{
+					position = underground.position,
+					stack = item_identification,
+					enable_looted = true,
+					force = underground.force,
+					allow_belts = false
+				}
+				consume_preserved_item_token(item, replace_context)
+			else
+				add_count(grouped_spills, item_name, 1)
+			end
 			c = c + 1
 		end
 		
 		add_count(storage.spilled_items, '_total', c)
 		
 		game.print("Spilled " .. c .. " items at  x=" .. underground.position.x .. ", y=" .. underground.position.y .. ": ")
-		for k,v in pairs(counts) do
-			underground.surface.spill_item_stack{position=underground.position, stack={name=k, count=v}, enable_looted=true, force=underground.force, allow_belts=false}
+		for k, v in pairs(grouped_spills) do
+			underground.surface.spill_item_stack{
+				position = underground.position,
+				stack = {name = k, count = v},
+				enable_looted = true,
+				force = underground.force,
+				allow_belts = false
+			}
 		end
 		game.print(collection_to_string(counts))
 	end
@@ -962,7 +1109,7 @@ function check_lanes(underground, neighbour, lanes_items, lanes_items_n)
 	
 end
 
-function fill_lanes(underground, lanes_items, lanes_positions, underground_len)
+function fill_lanes(underground, lanes_items, lanes_positions, underground_len, replace_context)
 	if lanes_items == nil then
 		return
 	end
@@ -971,7 +1118,7 @@ function fill_lanes(underground, lanes_items, lanes_positions, underground_len)
 		local items = lanes_items[lane_idx]
 		if items ~= nil then
 			local positions = lanes_positions[lane_idx]
-			fill_lane(underground, lane_idx, items, positions, 1, true, underground_len)
+			fill_lane(underground, lane_idx, items, positions, 1, true, underground_len, replace_context)
 		end
 	end
 end
@@ -993,7 +1140,17 @@ function call_replace(surface, entity_idx, entity_data)
 	
 end
 
-function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_up, underground_len)
+function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_up, underground_len, replace_context)
+	local own_replace_context = false
+	if replace_context == nil then
+		replace_context = {
+			preserve_mode = preserve_mode_enabled(),
+			temp_inventory = nil,
+			temp_inventory_next_slot = 1
+		}
+		own_replace_context = true
+	end
+
 	local entity_data = {surface = entity.surface, name = entity.name, position = entity.position, force = entity.force, direction = entity.direction}
 	local is_underground = entity.type == "underground-belt"
 	local n = nil
@@ -1002,7 +1159,7 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	if is_underground then
 		n = entity.neighbours
 		entity_data.belt_to_ground_type = entity.belt_to_ground_type
-		lanes_items, lanes_positions = check_and_clear_lanes(entity, underground_len)
+		lanes_items, lanes_positions = check_and_clear_lanes(entity, underground_len, replace_context)
 	end
 	
 	local new_name = nil
@@ -1021,7 +1178,7 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	
 	if neighbour_cond then
 		neighbour_idx = get_entity_idx(n)
-		n_lanes_items, n_lanes_positions = run_for_entity(n, surface, neighbour_idx, false, underground_len, power_up, not power_up)
+		n_lanes_items, n_lanes_positions = run_for_entity(n, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
 		--n_lanes_items, n_lanes_positions = replace_entity(n, neighbour_idx, false, power_up, underground_len)
 	end
 	
@@ -1036,31 +1193,35 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 			end
 			check_lanes(new_entity, neighbour_entity, lanes_items, n_lanes_items)
 			if new_entity.belt_to_ground_type == "input" then
-				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len)
+				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, replace_context)
 				if n_lanes_items ~= nil and n_lanes_positions ~= nil and neighbour_entity ~= nil then
-					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len)
+					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len, replace_context)
 				end
 				
 			else
 				if n_lanes_items ~= nil and n_lanes_positions ~= nil and neighbour_entity ~= nil then
-					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len)
+					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len, replace_context)
 				end
-				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len)
+				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, replace_context)
 				
 			end
 			
 		--elseif check_for_neighbour then
 		elseif check_for_neighbour then
-			fill_lanes(new_entity, lanes_items, lanes_positions, underground_len)
+			fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, replace_context)
 		
 		end
+	end
+
+	if own_replace_context and replace_context.temp_inventory ~= nil and replace_context.temp_inventory.valid then
+		replace_context.temp_inventory.destroy()
 	end
 	return lanes_items, lanes_positions
 	
 
 end
 
-function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underground_len, powerup_n, powerdown_n)
+function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underground_len, powerup_n, powerdown_n, replace_context)
 	-- TODO/IDEA: only powered up when both neighbours powered up? otherwise both power down?
 	local _, entities_by_surface, power_entities_by_surface = get_surface_tables(surface, true)
 	if entity.valid and entities_by_surface ~= nil and entities_by_surface[entity_idx] ~= nil then
@@ -1071,10 +1232,10 @@ function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underg
 		end
 		local required_energy = math.min(settings.global["powered-belts-required-energy"].value, power_entity.electric_buffer_size * 0.75)
 		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
-			return replace_entity(entity, surface, entity_idx, check_for_neighbour, true, underground_len)
+			return replace_entity(entity, surface, entity_idx, check_for_neighbour, true, underground_len, replace_context)
 			
 		elseif (not string.match(entity.name, "^unpowered%-")) and (power_entity.energy < required_energy or powerdown_n) then
-			return replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len)
+			return replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len, replace_context)
 		end
 	end
 	return nil, nil

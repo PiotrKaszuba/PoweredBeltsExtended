@@ -24,6 +24,14 @@ data:extend({
         hidden = true,
         order = "a"
     },
+    {
+        type = "bool-setting",
+        name = "powered-belts-preserve-full-underground-stack-state",
+        setting_type = "runtime-global",
+        default_value = false,
+        hidden = true,
+        order = "a"
+    },
     --[[
     {
         type = "int-setting",
