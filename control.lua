@@ -567,28 +567,54 @@ function lane_max_check(underground, lane_idx, underground_len)
 	return storage.ground_lanes_max_check + underground_len - 1.0
 end
 
+local function get_item_name_for_stats(item)
+	if type(item) == "string" then
+		return item
+	end
+	if type(item) == "table" and item.name ~= nil then
+		return item.name
+	end
+	return "_unknown-item"
+end
+
+local function append_items(items, positions, item_name, item_count, position)
+	if item_name == nil then
+		return
+	end
+	local count = math.max(0, math.floor(item_count or 0))
+	for _ = 1, count do
+		items[#items + 1] = item_name
+		positions[#positions + 1] = position
+	end
+end
+
 function position_capturing_algorithm(lane, max_check)
+	if not (lane and lane.valid) then
+		return {}, {}
+	end
 	local current_check = 0.0
 	local items = {}
 	local positions = {}
-	local last_item = nil
 	local removed = 0
-	while (current_check < max_check and #lane > 0) do
+	while (lane.valid and current_check < max_check and #lane > 0) do
 		if not(lane.can_insert_at(current_check)) then
-			last_item = lane[1].name
-			removed = lane.remove_item(lane[1])
+			local line_item = lane[1]
+			if not (line_item and line_item.valid_for_read) then
+				break
+			end
+			local item_name = get_item_name_for_stats(line_item)
+			removed = lane.remove_item(line_item)
 			if removed == 0 then
 				game.print("Warning: did not remove an item!")
 			else
-				positions[#positions+1] = current_check
-				items[#items+1] = last_item
+				append_items(items, positions, item_name, removed, current_check)
 			end
 		else
 			current_check = current_check + storage.belt_check_interval
 		end
 	end
 	
-	if #lane ~= 0 then
+	if lane.valid and #lane ~= 0 then
 	
 		local space_left = max_check - current_check
 		local space_required = (#lane + 1) * storage.belt_interval
@@ -606,20 +632,26 @@ function position_capturing_algorithm(lane, max_check)
 		end
 		local num_left_items = #lane
 		for _ = 1, num_left_items do
+			if (not lane.valid) or #lane == 0 then
+				break
+			end
 			current_check = current_check + storage.belt_interval
-			last_item = lane[1].name
-			removed = lane.remove_item(lane[1])
+			local line_item = lane[1]
+			if not (line_item and line_item.valid_for_read) then
+				break
+			end
+			local item_name = get_item_name_for_stats(line_item)
+			removed = lane.remove_item(line_item)
 			if removed == 0 then
 				game.print("Warning: did not remove an item!")
 			else
-				positions[#positions+1] = current_check
-				items[#items+1] = last_item
+				append_items(items, positions, item_name, removed, current_check)
 			end
 		
 		end
 	end
 	
-	if #lane ~= 0 then
+	if lane.valid and #lane ~= 0 then
 		game.print("Warning: did not remove all items; left (clearing now): " .. #lane)
 		lane.clear()
 	end
@@ -627,59 +659,14 @@ function position_capturing_algorithm(lane, max_check)
 	return items, positions
 end
 
-function clearing_lane_algorithm(lane)
-	local items = {}
-	local positions = {}
-	local last_item = nil
-	local removed = 0
-	local num_items = #lane
-	for item_idx = 1, num_items do
-		last_item = lane[1].name
-		removed = lane.remove_item(lane[1])
-		if removed == 0 then
-			game.print("Warning: did not remove an item!")
-		else
-			positions[#positions+1] = 0.0
-			items[#items+1] = last_item
-		end
+function check_and_clear_lane(lane, max_check)
+	if not (lane and lane.valid) then
+		return {}, {}
 	end
-	
-	if #lane ~= 0 then
-		game.print("Warning: did not remove all items; left (clearing now): " .. #lane)
-		lane.clear()
-	end
-	
-	return items, positions
-	
+	return position_capturing_algorithm(lane, max_check)
 end
 
-function counting_algorithm(lane)
-	local items = {}
-	local positions = {}
-	local last_item = nil
-	local num_items = #lane
-	for item_idx = 1, num_items do
-		last_item = lane[1].name
-		positions[#positions+1] = 0.0
-		items[#items+1] = last_item
-	end
-	
-	return items, positions
-	
-end
-
-
-function check_and_clear_lane(lane, max_check, clear_lane, capture_positions)
-	if clear_lane and capture_positions then
-		return position_capturing_algorithm(lane, max_check)
-	elseif clear_lane then
-		return clearing_lane_algorithm(lane)
-	else
-		return counting_algorithm(lane)
-	end
-end
-
-function check_and_clear_lanes(underground, underground_len, clear_ground_lanes, capture_positions)
+function check_and_clear_lanes(underground, underground_len)
 	local n = underground.neighbours
 	
 	local lanes_items = {}
@@ -692,9 +679,9 @@ function check_and_clear_lanes(underground, underground_len, clear_ground_lanes,
 			game.print("Warning: invalid line")
 		end
 		--]]
-		if lane then
+		if lane and lane.valid then
 			local max_check = lane_max_check(underground, lane_idx, underground_len)
-			local items, positions = check_and_clear_lane(lane, max_check, clear_ground_lanes, capture_positions)
+			local items, positions = check_and_clear_lane(lane, max_check)
 			lanes_items[lane_idx] = items
 			lanes_positions[lane_idx] = positions
 		end
@@ -709,9 +696,9 @@ function check_and_clear_lanes(underground, underground_len, clear_ground_lanes,
 				game.print("Warning: invalid line")
 			end
 			--]]
-			if lane then
+			if lane and lane.valid then
 				local max_check = lane_max_check(underground, lane_idx, underground_len)
-				local items, positions = check_and_clear_lane(lane, max_check, true, capture_positions)
+				local items, positions = check_and_clear_lane(lane, max_check)
 				lanes_items[lane_idx] = items
 				lanes_positions[lane_idx] = positions
 			end
@@ -740,6 +727,9 @@ end
 function fill_lane(underground, lane_idx, items, positions, starting_item_idx, obey_positions, underground_len)
 	local max_check = lane_max_check(underground, lane_idx, underground_len)
 	local lane = underground.get_transport_line(lane_idx)
+	if not (lane and lane.valid) then
+		return
+	end
 	--[[
 	if not (lane and lane.valid) then
 		game.print("Warning: invalid line")
@@ -755,7 +745,11 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 	local item = nil
 	local can_insert = false
 	for item_idx = starting_item_idx, #items do
+		if not lane.valid then
+			break
+		end
 		item = items[item_idx]
+		local item_name = get_item_name_for_stats(item)
 		local position = positions[item_idx]
 		if obey_positions then
 			current_check = math.max(position - (storage.belt_interval * 2) - (storage.fill_trial_interval * 2 * inserted), current_check)
@@ -771,7 +765,7 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 		if can_insert then
 			lane.insert_at(current_check, item)
 			inserted = inserted + 1
-			add_count(storage.saved_items, item, 1)
+			add_count(storage.saved_items, item_name, 1)
 			
 		else
 			break
@@ -805,10 +799,11 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 		
 		for item_idx = starting_item_idx+inserted, #items do
 			item = items[item_idx]
+			local item_name = get_item_name_for_stats(item)
 			
-			add_count(storage.spilled_items, item, 1)
-			add_count(storage.saved_items, item, 1)
-			add_count(counts, item, 1)
+			add_count(storage.spilled_items, item_name, 1)
+			add_count(storage.saved_items, item_name, 1)
+			add_count(counts, item_name, 1)
 			c = c + 1
 		end
 		
@@ -849,9 +844,9 @@ function get_saved_items(underground, lanes_items)
 			num_saved_items_per_lane[get_lane_identifier(underground, lane_idx)] = #items
 			
 			for item_idx = 1, #items do
-				local item = items[item_idx]
-				add_count(saved_items, item, 1)
-				add_count(saved_items_per_lane[get_lane_identifier(underground, lane_idx)], item, 1)
+				local item_name = get_item_name_for_stats(items[item_idx])
+				add_count(saved_items, item_name, 1)
+				add_count(saved_items_per_lane[get_lane_identifier(underground, lane_idx)], item_name, 1)
 			end
 		end
 		
@@ -876,25 +871,31 @@ function extra_and_saved_items_with_created_state(underground, saved_items, save
 			game.print("Warning: invalid line")
 		end
 		--]]
-		for item_idx = 1, #lane do
-			local item = lane[item_idx].name
-			if saved_items[item] == nil or saved_items[item] == 0 then
-				add_count(extra_items, item, 1)
-				num_extra_items = num_extra_items + 1
-			else
-				add_count(saved_items, item, -1)
-				num_saved_items = num_saved_items - 1
+		if lane and lane.valid then
+			for _, detailed_item in pairs(lane.get_detailed_contents()) do
+				local line_item = detailed_item.stack
+				if line_item and line_item.valid_for_read then
+					local item = get_item_name_for_stats(line_item)
+					local item_count = math.max(0, math.floor(line_item.count or 0))
+					for _ = 1, item_count do
+						if saved_items[item] == nil or saved_items[item] == 0 then
+							add_count(extra_items, item, 1)
+							num_extra_items = num_extra_items + 1
+						else
+							add_count(saved_items, item, -1)
+							num_saved_items = num_saved_items - 1
+						end
+						
+						if saved_items_per_lane[lane_identifier][item] == nil or saved_items_per_lane[lane_identifier][item] == 0 then
+							add_count(extra_items_per_lane[lane_identifier], item, 1)
+							num_extra_items_per_lane[lane_identifier] = num_extra_items_per_lane[lane_identifier] + 1
+						else
+							add_count(saved_items_per_lane[lane_identifier], item, -1)
+							num_saved_items_per_lane[lane_identifier] = num_saved_items_per_lane[lane_identifier] - 1
+						end
+					end
+				end
 			end
-			
-			if saved_items_per_lane[lane_identifier][item] == nil or saved_items_per_lane[lane_identifier][item] == 0 then
-				add_count(extra_items_per_lane[lane_identifier], item, 1)
-				num_extra_items_per_lane[lane_identifier] = num_extra_items_per_lane[lane_identifier] + 1
-			else
-				add_count(saved_items_per_lane[lane_identifier], item, -1)
-				num_saved_items_per_lane[lane_identifier] = num_saved_items_per_lane[lane_identifier] - 1
-			end
-			
-			
 		end
 	end
 	
@@ -961,24 +962,16 @@ function check_lanes(underground, neighbour, lanes_items, lanes_items_n)
 	
 end
 
-function fill_lanes(underground, lanes_items, lanes_positions, underground_len, clear_ground_lanes)
+function fill_lanes(underground, lanes_items, lanes_positions, underground_len)
 	if lanes_items == nil then
 		return
 	end
 	
-	local clear_lane = true
 	for lane_idx = 4, 1, -1 do
-	
-		if (not clear_ground_lanes) and (lane_idx == 1 or lane_idx == 2) then
-			clear_lane = false
-		end
-	
 		local items = lanes_items[lane_idx]
 		if items ~= nil then
 			local positions = lanes_positions[lane_idx]
-			if clear_lane then
-				fill_lane(underground, lane_idx, items, positions, 1, true, underground_len)
-			end
+			fill_lane(underground, lane_idx, items, positions, 1, true, underground_len)
 		end
 	end
 end
@@ -1000,7 +993,7 @@ function call_replace(surface, entity_idx, entity_data)
 	
 end
 
-function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_up, underground_len, clear_ground_lanes, capture_positions)
+function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_up, underground_len)
 	local entity_data = {surface = entity.surface, name = entity.name, position = entity.position, force = entity.force, direction = entity.direction}
 	local is_underground = entity.type == "underground-belt"
 	local n = nil
@@ -1009,7 +1002,7 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	if is_underground then
 		n = entity.neighbours
 		entity_data.belt_to_ground_type = entity.belt_to_ground_type
-		lanes_items, lanes_positions = check_and_clear_lanes(entity, underground_len, clear_ground_lanes, capture_positions)
+		lanes_items, lanes_positions = check_and_clear_lanes(entity, underground_len)
 	end
 	
 	local new_name = nil
@@ -1028,8 +1021,8 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	
 	if neighbour_cond then
 		neighbour_idx = get_entity_idx(n)
-		n_lanes_items, n_lanes_positions = run_for_entity(n, surface, neighbour_idx, false, underground_len, power_up, not power_up, clear_ground_lanes, capture_positions)
-		--n_lanes_items, n_lanes_positions = replace_entity(n, neighbour_idx, false, power_up, underground_len, clear_ground_lanes, capture_positions)
+		n_lanes_items, n_lanes_positions = run_for_entity(n, surface, neighbour_idx, false, underground_len, power_up, not power_up)
+		--n_lanes_items, n_lanes_positions = replace_entity(n, neighbour_idx, false, power_up, underground_len)
 	end
 	
 	local new_entity = call_replace(surface, entity_idx, entity_data)
@@ -1043,22 +1036,22 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 			end
 			check_lanes(new_entity, neighbour_entity, lanes_items, n_lanes_items)
 			if new_entity.belt_to_ground_type == "input" then
-				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, clear_ground_lanes)
+				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len)
 				if n_lanes_items ~= nil and n_lanes_positions ~= nil and neighbour_entity ~= nil then
-					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len, clear_ground_lanes)
+					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len)
 				end
 				
 			else
 				if n_lanes_items ~= nil and n_lanes_positions ~= nil and neighbour_entity ~= nil then
-					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len, clear_ground_lanes)
+					fill_lanes(neighbour_entity, n_lanes_items, n_lanes_positions, underground_len)
 				end
-				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, clear_ground_lanes)
+				fill_lanes(new_entity, lanes_items, lanes_positions, underground_len)
 				
 			end
 			
 		--elseif check_for_neighbour then
 		elseif check_for_neighbour then
-			fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, clear_ground_lanes)
+			fill_lanes(new_entity, lanes_items, lanes_positions, underground_len)
 		
 		end
 	end
@@ -1067,7 +1060,7 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 
 end
 
-function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underground_len, powerup_n, powerdown_n, clear_ground_lanes, capture_positions)
+function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underground_len, powerup_n, powerdown_n)
 	-- TODO/IDEA: only powered up when both neighbours powered up? otherwise both power down?
 	local _, entities_by_surface, power_entities_by_surface = get_surface_tables(surface, true)
 	if entity.valid and entities_by_surface ~= nil and entities_by_surface[entity_idx] ~= nil then
@@ -1078,10 +1071,10 @@ function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underg
 		end
 		local required_energy = math.min(settings.global["powered-belts-required-energy"].value, power_entity.electric_buffer_size * 0.75)
 		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
-			return replace_entity(entity, surface, entity_idx, check_for_neighbour, true, underground_len, clear_ground_lanes, capture_positions)
+			return replace_entity(entity, surface, entity_idx, check_for_neighbour, true, underground_len)
 			
 		elseif (not string.match(entity.name, "^unpowered%-")) and (power_entity.energy < required_energy or powerdown_n) then
-			return replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len, clear_ground_lanes, capture_positions)
+			return replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len)
 		end
 	end
 	return nil, nil
@@ -1113,7 +1106,7 @@ script.on_event(defines.events.on_tick, function(event)
 			elseif entity == nil or (not entity.valid) then
 				clear_tile(entity_key, surface)
 			elseif power_entities_by_surface ~= nil and power_entities_by_surface[entity_key] ~= nil then
-				run_for_entity(entity, surface, entity_key, true, underground_length(entity), false, false, true, true)
+				run_for_entity(entity, surface, entity_key, true, underground_length(entity), false, false)
 			end
 			if storage.power_entities[surface_key] ~= nil and storage.power_entities[surface_key][entity_key] ~= nil then
 				storage.tick_surface_iterator_key = surface_key
