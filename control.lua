@@ -7,6 +7,13 @@ local belt_entity_types = {
 	["loader-1x1"] = true,
 }
 local belt_entity_type_list = {"transport-belt", "underground-belt", "splitter", "loader", "loader-1x1"}
+local underground_transfer_modes = {
+	["name-only"] = true,
+	["preserve-full-state"] = true,
+	["disabled"] = true,
+}
+local default_underground_transfer_mode = "name-only"
+local underground_transfer_mode_setting_name = "powered-belts-underground-item-transfer-mode"
 
 local function get_surface_key(surface)
 	if not surface then
@@ -191,6 +198,9 @@ function init_globals()
 	end
 
 	if not storage.player_forces then storage.player_forces = {} end
+	if storage.test_overrides == nil then
+		storage.test_overrides = {}
+	end
 
 	migrate_surface_partition("entities")
 	migrate_surface_partition("power_entities")
@@ -576,9 +586,63 @@ end
 local preserve_mode_temp_inventory_initial_size = 64
 local preserve_mode_temp_inventory_max_size = 65535
 
-local function preserve_mode_enabled()
-	local setting = settings.global["powered-belts-preserve-full-underground-stack-state"]
-	return setting ~= nil and setting.value == true
+local function normalize_underground_transfer_mode(mode)
+	if type(mode) ~= "string" then
+		return default_underground_transfer_mode
+	end
+	if underground_transfer_modes[mode] then
+		return mode
+	end
+	return default_underground_transfer_mode
+end
+
+local function get_effective_underground_transfer_mode()
+	if storage and storage.test_overrides and storage.test_overrides.underground_item_transfer_mode ~= nil then
+		return normalize_underground_transfer_mode(storage.test_overrides.underground_item_transfer_mode)
+	end
+	local setting = settings.global[underground_transfer_mode_setting_name]
+	if setting == nil then
+		return default_underground_transfer_mode
+	end
+	return normalize_underground_transfer_mode(setting.value)
+end
+
+local function preserve_mode_enabled(mode)
+	local effective_mode = mode
+	if effective_mode == nil then
+		effective_mode = get_effective_underground_transfer_mode()
+	end
+	return normalize_underground_transfer_mode(effective_mode) == "preserve-full-state"
+end
+
+local function underground_item_transfer_disabled(mode)
+	local effective_mode = mode
+	if effective_mode == nil then
+		effective_mode = get_effective_underground_transfer_mode()
+	end
+	return normalize_underground_transfer_mode(effective_mode) == "disabled"
+end
+
+local function get_required_energy_setting()
+	if storage and storage.test_overrides and type(storage.test_overrides.required_energy) == "number" then
+		return storage.test_overrides.required_energy
+	end
+	local setting = settings.global["powered-belts-required-energy"]
+	if setting ~= nil then
+		return setting.value
+	end
+	return 500
+end
+
+local function get_operations_per_tick_setting()
+	if storage and storage.test_overrides and type(storage.test_overrides.operations_per_tick) == "number" then
+		return math.max(1, math.floor(storage.test_overrides.operations_per_tick))
+	end
+	local setting = settings.global["powered-belts-operations-per-tick"]
+	if setting ~= nil then
+		return math.max(1, math.floor(setting.value))
+	end
+	return 16
 end
 
 local function get_item_name_for_stats(item)
@@ -1143,8 +1207,11 @@ end
 function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_up, underground_len, replace_context)
 	local own_replace_context = false
 	if replace_context == nil then
+		local underground_transfer_mode = get_effective_underground_transfer_mode()
 		replace_context = {
-			preserve_mode = preserve_mode_enabled(),
+			underground_transfer_mode = underground_transfer_mode,
+			preserve_mode = preserve_mode_enabled(underground_transfer_mode),
+			disable_item_transfer = underground_item_transfer_disabled(underground_transfer_mode),
 			temp_inventory = nil,
 			temp_inventory_next_slot = 1
 		}
@@ -1159,7 +1226,9 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	if is_underground then
 		n = entity.neighbours
 		entity_data.belt_to_ground_type = entity.belt_to_ground_type
-		lanes_items, lanes_positions = check_and_clear_lanes(entity, underground_len, replace_context)
+		if not replace_context.disable_item_transfer then
+			lanes_items, lanes_positions = check_and_clear_lanes(entity, underground_len, replace_context)
+		end
 	end
 	
 	local new_name = nil
@@ -1186,7 +1255,7 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	local _, entities_by_surface = get_surface_tables(surface, false)
 	
 	if is_underground then
-		if neighbour_cond then
+		if (not replace_context.disable_item_transfer) and neighbour_cond then
 			local neighbour_entity = nil
 			if entities_by_surface ~= nil then
 				neighbour_entity = entities_by_surface[neighbour_idx]
@@ -1207,7 +1276,7 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 			end
 			
 		--elseif check_for_neighbour then
-		elseif check_for_neighbour then
+		elseif (not replace_context.disable_item_transfer) and check_for_neighbour then
 			fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, replace_context)
 		
 		end
@@ -1230,7 +1299,7 @@ function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underg
 		if power_entity == nil or (not power_entity.valid) then
 			return nil, nil
 		end
-		local required_energy = math.min(settings.global["powered-belts-required-energy"].value, power_entity.electric_buffer_size * 0.75)
+		local required_energy = math.min(get_required_energy_setting(), power_entity.electric_buffer_size * 0.75)
 		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
 			return replace_entity(entity, surface, entity_idx, check_for_neighbour, true, underground_len, replace_context)
 			
@@ -1239,6 +1308,240 @@ function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underg
 		end
 	end
 	return nil, nil
+end
+
+local function push_snapshot_detail(collection, value, max_entries)
+	if #collection < max_entries then
+		collection[#collection + 1] = value
+	end
+end
+
+local function get_surface_state_snapshot(surface, max_details)
+	local surface_key = get_surface_key(surface)
+	local entities_by_surface = storage.entities[surface_key] or {}
+	local power_entities_by_surface = storage.power_entities[surface_key] or {}
+	local world_entities = surface.find_entities_filtered{type = belt_entity_type_list}
+	local world_all_power_entities = surface.find_entities_filtered{type = "electric-energy-interface"}
+
+	local world_entities_by_pos = {}
+	local world_power_counts_by_pos = {}
+	local world_power_by_pos = {}
+	local world_power_entities = {}
+
+	for _, entity in pairs(world_entities) do
+		if entity and entity.valid then
+			world_entities_by_pos[get_entity_idx(entity)] = entity
+		end
+	end
+
+	for _, power_entity in pairs(world_all_power_entities) do
+		if power_entity and power_entity.valid and string.endswith(power_entity.name, "-power") then
+			local pos = get_entity_idx(power_entity)
+			world_power_counts_by_pos[pos] = (world_power_counts_by_pos[pos] or 0) + 1
+			if world_power_by_pos[pos] == nil then
+				world_power_by_pos[pos] = power_entity
+			end
+			world_power_entities[#world_power_entities + 1] = power_entity
+		end
+	end
+
+	local details = {
+		missing_storage_entities = {},
+		missing_storage_power_entities = {},
+		missing_world_power_entities = {},
+		duplicate_world_power_entities = {},
+		invalid_storage_entities = {},
+		invalid_storage_power_entities = {},
+		stale_storage_entities = {},
+		stale_storage_power_entities = {},
+		orphan_world_power_entities = {},
+		wrong_power_entity_name = {},
+		wrong_power_entity_force = {},
+	}
+
+	local counts = {
+		world_entities = 0,
+		world_power_entities = #world_power_entities,
+		storage_entities = 0,
+		storage_power_entities = 0,
+		missing_storage_entities = 0,
+		missing_storage_power_entities = 0,
+		missing_world_power_entities = 0,
+		duplicate_world_power_entities = 0,
+		invalid_storage_entities = 0,
+		invalid_storage_power_entities = 0,
+		stale_storage_entities = 0,
+		stale_storage_power_entities = 0,
+		orphan_world_power_entities = 0,
+		wrong_power_entity_name = 0,
+		wrong_power_entity_force = 0,
+	}
+
+	for pos, entity in pairs(world_entities_by_pos) do
+		counts.world_entities = counts.world_entities + 1
+		local stored_entity = entities_by_surface[pos]
+		if stored_entity ~= entity then
+			counts.missing_storage_entities = counts.missing_storage_entities + 1
+			push_snapshot_detail(details.missing_storage_entities, pos, max_details)
+		end
+
+		local stored_power_entity = power_entities_by_surface[pos]
+		if stored_power_entity == nil or (not stored_power_entity.valid) then
+			counts.missing_storage_power_entities = counts.missing_storage_power_entities + 1
+			push_snapshot_detail(details.missing_storage_power_entities, pos, max_details)
+		end
+
+		local world_power_count = world_power_counts_by_pos[pos] or 0
+		if world_power_count == 0 then
+			counts.missing_world_power_entities = counts.missing_world_power_entities + 1
+			push_snapshot_detail(details.missing_world_power_entities, pos, max_details)
+		elseif world_power_count > 1 then
+			counts.duplicate_world_power_entities = counts.duplicate_world_power_entities + 1
+			push_snapshot_detail(details.duplicate_world_power_entities, pos, max_details)
+		end
+
+		local world_power_entity = world_power_by_pos[pos]
+		if world_power_entity ~= nil then
+			local expected_name = get_correct_power_entity_name(extract_base_name_from_entity_to_power(entity.name), entity.force)
+			if world_power_entity.name ~= expected_name then
+				counts.wrong_power_entity_name = counts.wrong_power_entity_name + 1
+				push_snapshot_detail(details.wrong_power_entity_name, {
+					pos = pos,
+					expected = expected_name,
+					actual = world_power_entity.name,
+				}, max_details)
+			end
+			if world_power_entity.force.name ~= entity.force.name then
+				counts.wrong_power_entity_force = counts.wrong_power_entity_force + 1
+				push_snapshot_detail(details.wrong_power_entity_force, {
+					pos = pos,
+					expected = entity.force.name,
+					actual = world_power_entity.force.name,
+				}, max_details)
+			end
+		end
+	end
+
+	for pos, stored_entity in pairs(entities_by_surface) do
+		counts.storage_entities = counts.storage_entities + 1
+		if stored_entity == nil or (not stored_entity.valid) then
+			counts.invalid_storage_entities = counts.invalid_storage_entities + 1
+			push_snapshot_detail(details.invalid_storage_entities, pos, max_details)
+		elseif world_entities_by_pos[pos] ~= stored_entity then
+			counts.stale_storage_entities = counts.stale_storage_entities + 1
+			push_snapshot_detail(details.stale_storage_entities, pos, max_details)
+		end
+	end
+
+	for pos, stored_power_entity in pairs(power_entities_by_surface) do
+		counts.storage_power_entities = counts.storage_power_entities + 1
+		if stored_power_entity == nil or (not stored_power_entity.valid) then
+			counts.invalid_storage_power_entities = counts.invalid_storage_power_entities + 1
+			push_snapshot_detail(details.invalid_storage_power_entities, pos, max_details)
+		elseif world_power_by_pos[pos] ~= stored_power_entity then
+			counts.stale_storage_power_entities = counts.stale_storage_power_entities + 1
+			push_snapshot_detail(details.stale_storage_power_entities, pos, max_details)
+		end
+	end
+
+	for pos, world_power_entity in pairs(world_power_by_pos) do
+		if world_entities_by_pos[pos] == nil then
+			counts.orphan_world_power_entities = counts.orphan_world_power_entities + 1
+			push_snapshot_detail(details.orphan_world_power_entities, {
+				pos = pos,
+				name = world_power_entity.name
+			}, max_details)
+		end
+	end
+
+	return {
+		surface_index = surface_key,
+		counts = counts,
+		details = details,
+	}
+end
+
+function get_state_snapshot(surface_index)
+	local requested_surface = nil
+	if surface_index ~= nil then
+		requested_surface = game.surfaces[surface_index]
+	end
+	local max_details = 128
+	local snapshot = {
+		tick = game.tick,
+		underground_item_transfer_mode = get_effective_underground_transfer_mode(),
+		required_energy_setting = get_required_energy_setting(),
+		operations_per_tick_setting = get_operations_per_tick_setting(),
+		surfaces = {},
+		totals = {
+			world_entities = 0,
+			world_power_entities = 0,
+			storage_entities = 0,
+			storage_power_entities = 0,
+			missing_storage_entities = 0,
+			missing_storage_power_entities = 0,
+			missing_world_power_entities = 0,
+			duplicate_world_power_entities = 0,
+			invalid_storage_entities = 0,
+			invalid_storage_power_entities = 0,
+			stale_storage_entities = 0,
+			stale_storage_power_entities = 0,
+			orphan_world_power_entities = 0,
+			wrong_power_entity_name = 0,
+			wrong_power_entity_force = 0,
+		}
+	}
+
+	local function add_surface(surface)
+		local surface_snapshot = get_surface_state_snapshot(surface, max_details)
+		snapshot.surfaces[surface.index] = surface_snapshot
+		for metric, value in pairs(surface_snapshot.counts) do
+			snapshot.totals[metric] = (snapshot.totals[metric] or 0) + value
+		end
+	end
+
+	if requested_surface ~= nil then
+		add_surface(requested_surface)
+	else
+		for _, surface in pairs(game.surfaces) do
+			add_surface(surface)
+		end
+	end
+	return snapshot
+end
+
+function set_test_overrides(overrides)
+	if type(overrides) ~= "table" then
+		storage.test_overrides = {}
+		return storage.test_overrides
+	end
+
+	local sanitized = {}
+	if overrides.underground_item_transfer_mode ~= nil then
+		sanitized.underground_item_transfer_mode = normalize_underground_transfer_mode(overrides.underground_item_transfer_mode)
+	end
+	if type(overrides.required_energy) == "number" then
+		sanitized.required_energy = math.max(0, overrides.required_energy)
+	end
+	if type(overrides.operations_per_tick) == "number" then
+		sanitized.operations_per_tick = math.max(1, math.floor(overrides.operations_per_tick))
+	end
+
+	storage.test_overrides = sanitized
+	return storage.test_overrides
+end
+
+function run_full_scan()
+	find_all_power_entities()
+	return get_state_snapshot()
+end
+
+if rawget(_G, "__PBE_UNIT_TEST_MODE") then
+	_G.__PBE_TEST_API = {
+		normalize_underground_transfer_mode = normalize_underground_transfer_mode,
+		preserve_mode_enabled = preserve_mode_enabled,
+		underground_item_transfer_disabled = underground_item_transfer_disabled,
+	}
 end
 
 
@@ -1250,7 +1553,7 @@ script.on_event(defines.events.on_tick, function(event)
 	end
 	storage.sum_ticks = storage.sum_ticks + 1
     if storage.power_entities ~= nil and storage.entities ~= nil and next(storage.power_entities) then
-		for _ = 1, settings.global["powered-belts-operations-per-tick"].value do
+		for _ = 1, get_operations_per_tick_setting() do
 			local surface_key, entity_key = get_next_power_entity_iterator()
 			if surface_key == nil or entity_key == nil then
 				storage.tick_surface_iterator_key = nil
@@ -1286,5 +1589,8 @@ end)
 script.on_event({defines.events.on_research_finished}, tech_check)
 commands.add_command("PBE_CheckPowerEntities", "Checks and cleans power entities on all surfaces", find_all_power_entities)
 remote.add_interface("powered_belts_extended", {
-  get_storage = function() return storage end
+  get_storage = function() return storage end,
+  run_full_scan = run_full_scan,
+  get_state_snapshot = get_state_snapshot,
+  set_test_overrides = set_test_overrides,
 })

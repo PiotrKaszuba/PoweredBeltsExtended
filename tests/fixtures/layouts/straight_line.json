@@ -1,0 +1,117 @@
+{
+  "id": "straight_line",
+  "version": 1,
+  "area": {
+    "left_top": {
+      "x": -5.0,
+      "y": -5.0
+    },
+    "right_bottom": {
+      "x": 20.0,
+      "y": 10.0
+    }
+  },
+  "references": {
+    "source": "source_chest",
+    "sink": "sink_chest"
+  },
+  "entities": [
+    {
+      "id": "source_chest",
+      "name": "steel-chest",
+      "position": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "id": "input_inserter",
+      "name": "burner-inserter",
+      "position": {
+        "x": 1.5,
+        "y": 0.5
+      },
+      "direction": 12
+    },
+    {
+      "id": "belt_1",
+      "name": "transport-belt",
+      "position": {
+        "x": 2.5,
+        "y": 0.5
+      },
+      "direction": 4
+    },
+    {
+      "id": "belt_2",
+      "name": "transport-belt",
+      "position": {
+        "x": 3.5,
+        "y": 0.5
+      },
+      "direction": 4
+    },
+    {
+      "id": "belt_3",
+      "name": "transport-belt",
+      "position": {
+        "x": 4.5,
+        "y": 0.5
+      },
+      "direction": 4
+    },
+    {
+      "id": "belt_4",
+      "name": "transport-belt",
+      "position": {
+        "x": 5.5,
+        "y": 0.5
+      },
+      "direction": 4
+    },
+    {
+      "id": "belt_5",
+      "name": "transport-belt",
+      "position": {
+        "x": 6.5,
+        "y": 0.5
+      },
+      "direction": 4
+    },
+    {
+      "id": "belt_6",
+      "name": "transport-belt",
+      "position": {
+        "x": 7.5,
+        "y": 0.5
+      },
+      "direction": 4
+    },
+    {
+      "id": "belt_7",
+      "name": "transport-belt",
+      "position": {
+        "x": 8.5,
+        "y": 0.5
+      },
+      "direction": 4
+    },
+    {
+      "id": "output_inserter",
+      "name": "burner-inserter",
+      "position": {
+        "x": 9.5,
+        "y": 0.5
+      },
+      "direction": 12
+    },
+    {
+      "id": "sink_chest",
+      "name": "steel-chest",
+      "position": {
+        "x": 10.5,
+        "y": 0.5
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "PBEIntegrationHarness",
+  "version": "0.1.0",
+  "title": "PBE Integration Harness",
+  "author": "Codex",
+  "description": "Test harness mod for Powered Belts Extended integration scenarios.",
+  "factorio_version": "2.0",
+  "dependencies": [
+    "base >= 2.0",
+    "? PoweredBeltsExtended >= 1.1.1"
+  ]
+}

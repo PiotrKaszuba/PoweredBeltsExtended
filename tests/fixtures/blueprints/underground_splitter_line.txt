@@ -1,0 +1,3 @@
+# Replace with a Factorio blueprint string (starts with "0").
+# The generated layout is currently checked in at:
+# tests/fixtures/layouts/underground_splitter_line.json

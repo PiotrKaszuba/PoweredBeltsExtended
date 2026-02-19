@@ -25,10 +25,12 @@ data:extend({
         order = "a"
     },
     {
-        type = "bool-setting",
-        name = "powered-belts-preserve-full-underground-stack-state",
+        type = "string-setting",
+        name = "powered-belts-underground-item-transfer-mode",
         setting_type = "runtime-global",
-        default_value = false,
+        default_value = "name-only",
+        allow_blank = false,
+        allowed_values = {"name-only", "preserve-full-state", "disabled"},
         hidden = true,
         order = "a"
     },
