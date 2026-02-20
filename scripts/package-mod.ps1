@@ -46,7 +46,8 @@ $FilesToInclude = @(
     "data-final-fixes.lua",
     "settings.lua",
     "changelog.txt",
-    "thumbnail.png"
+    "thumbnail.png",
+    "LICENSE"
 )
 
 # Directories to include

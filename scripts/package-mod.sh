@@ -72,6 +72,7 @@ FILES_TO_INCLUDE=(
   "settings.lua"
   "changelog.txt"
   "thumbnail.png"
+  "LICENSE"
 )
 
 DIRS_TO_INCLUDE=(
