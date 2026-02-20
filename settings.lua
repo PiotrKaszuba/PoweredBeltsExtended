@@ -28,7 +28,7 @@ data:extend({
         type = "string-setting",
         name = "powered-belts-underground-item-transfer-mode",
         setting_type = "runtime-global",
-        default_value = "name-only",
+        default_value = "preserve-full-state",
         allow_blank = false,
         allowed_values = {"name-only", "preserve-full-state", "disabled"},
         hidden = true,
