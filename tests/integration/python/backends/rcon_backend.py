@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import subprocess
 import time
-from pathlib import Path
 
-from .base import RunConfig, RuntimePaths, find_free_port, run_factorio_command, stage_runtime
+from .base import BackendRunResult, RunConfig, RuntimePaths, cleanup_runtime_dir, find_free_port, run_factorio_command, stage_runtime
 
 
 def _create_world(config: RunConfig, runtime: RuntimePaths) -> None:
@@ -47,54 +46,69 @@ def _send_rcon_probe(port: int, password: str) -> None:
     raise RuntimeError(f"Could not connect over RCON: {last_error}")
 
 
-def run(config: RunConfig) -> Path:
+def run(config: RunConfig) -> BackendRunResult:
     runtime = stage_runtime(config)
-    _create_world(config, runtime)
-
-    game_port = find_free_port()
-    rcon_port = find_free_port()
-    rcon_password = "pbe-test-password"
-    cmd = [
-        str(config.factorio_bin),
-        "--mod-directory",
-        str(runtime.mods_dir),
-        "--config",
-        str(runtime.config_path),
-        "--start-server",
-        str(runtime.save_path),
-        "--server-settings",
-        str(runtime.server_settings_path),
-        "--bind",
-        "127.0.0.1",
-        "--port",
-        str(game_port),
-        "--disable-audio",
-        "--rcon-port",
-        str(rcon_port),
-        "--rcon-password",
-        rcon_password,
-        "--until-tick",
-        str(config.until_tick),
-    ]
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    process: subprocess.Popen[str] | None = None
     try:
-        _send_rcon_probe(rcon_port, rcon_password)
-        stdout, stderr = process.communicate(timeout=config.timeout_seconds)
-    except subprocess.TimeoutExpired as exc:
-        process.kill()
-        raise RuntimeError("Factorio RCON backend timed out") from exc
+        _create_world(config, runtime)
 
-    if process.returncode != 0:
-        raise RuntimeError(
-            "Factorio RCON backend failed.\n"
-            f"stdout:\n{stdout}\n"
-            f"stderr:\n{stderr}"
+        game_port = find_free_port()
+        rcon_port = find_free_port()
+        rcon_password = "pbe-test-password"
+        cmd = [
+            str(config.factorio_bin),
+            "--mod-directory",
+            str(runtime.mods_dir),
+            "--config",
+            str(runtime.config_path),
+            "--start-server",
+            str(runtime.save_path),
+            "--server-settings",
+            str(runtime.server_settings_path),
+            "--bind",
+            "127.0.0.1",
+            "--port",
+            str(game_port),
+            "--disable-audio",
+            "--rcon-port",
+            str(rcon_port),
+            "--rcon-password",
+            rcon_password,
+            "--until-tick",
+            str(config.until_tick),
+        ]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
-    if not runtime.result_file.exists():
-        raise RuntimeError(f"Missing integration result file: {runtime.result_file}")
-    return runtime.result_file
+        try:
+            _send_rcon_probe(rcon_port, rcon_password)
+            stdout, stderr = process.communicate(timeout=config.timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            process.kill()
+            raise RuntimeError("Factorio RCON backend timed out") from exc
+
+        if process.returncode != 0:
+            raise RuntimeError(
+                "Factorio RCON backend failed.\n"
+                f"stdout:\n{stdout}\n"
+                f"stderr:\n{stderr}"
+            )
+        if not runtime.result_file.exists():
+            raise RuntimeError(f"Missing integration result file: {runtime.result_file}")
+        return BackendRunResult(result_file=runtime.result_file, runtime_root=runtime.runtime_root)
+    except Exception:
+        if process is not None and process.poll() is None:
+            process.kill()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+        if config.remove_runtime_dir_on_exit:
+            try:
+                cleanup_runtime_dir(runtime.runtime_root)
+            except Exception:
+                pass
+        raise

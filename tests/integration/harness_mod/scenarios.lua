@@ -2,13 +2,18 @@ local scenarios = {}
 
 local function make_transfer_scenario(base)
 	local inserter_name = base.inserter_name or "bulk-inserter"
+	local transfer_assertion_type = "transfer_complete"
+	if base.expect_transfer_incomplete then
+		transfer_assertion_type = "transfer_not_complete"
+	end
 
 	local scenario = {
 		id = base.id,
 		layout_id = base.layout_id,
 		inserter_name = inserter_name,
-		blocking = base.blocking ~= false,
 		max_tick = base.max_tick or 1200,
+		expected_failed_mod_enabled = base.expected_failed_mod_enabled or 0,
+		expected_failed_mod_disabled = base.expected_failed_mod_disabled or 0,
 		settings_overrides = {
 			underground_item_transfer_mode = base.underground_item_transfer_mode or "name-only",
 			operations_per_tick = base.operations_per_tick or 128,
@@ -32,13 +37,12 @@ local function make_transfer_scenario(base)
 				tick = base.max_tick or 1200,
 				assertions = {
 					{
-						type = "transfer_complete",
+						type = transfer_assertion_type,
 						source_ref = "source",
 						sink_ref = "sink",
 						expected_contents = base.item_stacks,
 						source_should_be_empty = true,
 						compare_stack_fingerprints = base.compare_stack_fingerprints or false,
-						expected_failure = base.expected_transfer_failure == true,
 					},
 					{type = "structural_consistency"},
 				},
@@ -173,11 +177,11 @@ local function default_scenarios()
 			},
 		},
 		make_transfer_scenario{
-			id = "transfer_underground_stateful_name_only_canary",
+			id = "transfer_underground_stateful_name_only_negative",
 			layout_id = "underground_splitter_line",
 			underground_item_transfer_mode = "name-only",
-			blocking = false,
-			expected_transfer_failure = true,
+			expect_transfer_incomplete = true,
+			expected_failed_mod_disabled = 1,
 			item_stacks = {
 				{name = "power-armor", count = 1},
 			},
@@ -204,17 +208,17 @@ local function default_scenarios()
 				{
 					tick = 2200,
 					assertions = {
-						{type = "canary_transfer_metrics", source_ref = "source", sink_ref = "sink"},
+						{type = "item_conservation", source_ref = "source", sink_ref = "sink"},
 					},
 				},
 			},
 		},
 		make_transfer_scenario{
-			id = "transfer_underground_disabled_canary",
+			id = "transfer_underground_disabled_negative",
 			layout_id = "underground_splitter_line",
 			underground_item_transfer_mode = "disabled",
-			blocking = false,
-			expected_transfer_failure = true,
+			expect_transfer_incomplete = true,
+			expected_failed_mod_disabled = 2,
 			item_stacks = {
 				{name = "iron-plate", count = 60},
 			},
@@ -229,7 +233,7 @@ local function default_scenarios()
 				{
 					tick = 2200,
 					assertions = {
-						{type = "canary_transfer_metrics", source_ref = "source", sink_ref = "sink", expected_failure = true},
+						{type = "item_not_conserved", source_ref = "source", sink_ref = "sink"},
 					},
 				},
 			},
@@ -238,7 +242,6 @@ local function default_scenarios()
 			id = "scan_recovery_smoke",
 			layout_id = "straight_line",
 			inserter_name = "bulk-inserter",
-			blocking = true,
 			max_tick = 900,
 			settings_overrides = {
 				underground_item_transfer_mode = "name-only",

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INFO_JSON="$REPO_ROOT/info.json"
 cd "$REPO_ROOT"
 
 MOD_NAME="$(python - <<'PY'
@@ -17,18 +16,35 @@ DIST_DIR="$REPO_ROOT/dist"
 ZIP_PATH="$DIST_DIR/$MOD_NAME.zip"
 STAGING_ROOT="$(mktemp -d)"
 STAGING_MOD_DIR="$STAGING_ROOT/$MOD_NAME"
+INCLUDE_FILES=(
+  "control.lua"
+  "settings.lua"
+  "data-final-fixes.lua"
+  "info.json"
+  "changelog.txt"
+  "thumbnail.png"
+)
+INCLUDE_DIRS=(
+  "locale"
+  "prototypes"
+)
 
 mkdir -p "$DIST_DIR" "$STAGING_MOD_DIR"
 
-for entry in "$REPO_ROOT"/* "$REPO_ROOT"/.*; do
-  name="$(basename "$entry")"
-  if [[ "$name" == "." || "$name" == ".." ]]; then
-    continue
+for name in "${INCLUDE_FILES[@]}"; do
+  if [[ ! -f "$REPO_ROOT/$name" ]]; then
+    echo "Missing required file for packaging: $name" >&2
+    exit 2
   fi
-  if [[ "$name" == ".git" || "$name" == ".vscode" || "$name" == "tests" || "$name" == "dist" ]]; then
-    continue
+  cp "$REPO_ROOT/$name" "$STAGING_MOD_DIR/$name"
+done
+
+for name in "${INCLUDE_DIRS[@]}"; do
+  if [[ ! -d "$REPO_ROOT/$name" ]]; then
+    echo "Missing required directory for packaging: $name" >&2
+    exit 2
   fi
-  cp -R "$entry" "$STAGING_MOD_DIR/"
+  cp -R "$REPO_ROOT/$name" "$STAGING_MOD_DIR/$name"
 done
 
 rm -f "$ZIP_PATH"

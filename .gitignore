@@ -1,4 +1,7 @@
 .vscode/
 .idea/
 *.pyc
+__pycache__/
+.pytest_cache/
 releases/
+dist/

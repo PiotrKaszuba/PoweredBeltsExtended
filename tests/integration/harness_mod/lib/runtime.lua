@@ -107,9 +107,6 @@ local function ensure_harness_storage()
 				total = 0,
 				passed = 0,
 				failed = 0,
-				blocking_failed = 0,
-				non_blocking_failed = 0,
-				expected_non_blocking_failed = 0,
 			},
 		}
 	end
@@ -212,9 +209,6 @@ local function reset_results()
 			total = 0,
 			passed = 0,
 			failed = 0,
-			blocking_failed = 0,
-			non_blocking_failed = 0,
-			expected_non_blocking_failed = 0,
 		},
 	}
 	harness.written_results = false
@@ -246,38 +240,42 @@ local function write_results_if_complete()
 	harness.written_results = true
 end
 
+local function get_expected_failed_assertions(scenario, main_mod_available)
+	if scenario == nil then
+		return 0
+	end
+	local expected = nil
+	if main_mod_available then
+		expected = scenario.expected_failed_mod_enabled
+	else
+		expected = scenario.expected_failed_mod_disabled
+	end
+	if type(expected) ~= "number" then
+		return 0
+	end
+	return math.max(0, math.floor(expected))
+end
+
 local function summarize_scenario(active)
 	local has_any_failed = false
-	local has_blocking_failed = false
-	local blocking_failed_count = 0
-	local non_blocking_failed_count = 0
-	local expected_non_blocking_failed_count = 0
+	local failed_count = 0
 	for _, assertion_result in pairs(active.assertion_results) do
 		if not assertion_result.passed then
 			has_any_failed = true
-			if assertion_result.blocking then
-				has_blocking_failed = true
-				blocking_failed_count = blocking_failed_count + 1
-			elseif assertion_result.expected_failure then
-				expected_non_blocking_failed_count = expected_non_blocking_failed_count + 1
-			else
-				non_blocking_failed_count = non_blocking_failed_count + 1
-			end
+			failed_count = failed_count + 1
 		end
 	end
+	local expected_failed_assertions = get_expected_failed_assertions(active.scenario, active.main_mod_available)
 
 	return {
 		id = active.scenario.id,
-		blocking = active.scenario.blocking,
 		start_tick = active.start_tick,
 		end_tick = game.tick,
 		duration_ticks = game.tick - active.start_tick,
 		has_any_failed = has_any_failed,
-		has_blocking_failed = has_blocking_failed,
-		blocking_failed_count = blocking_failed_count,
-		non_blocking_failed_count = non_blocking_failed_count,
-		expected_non_blocking_failed_count = expected_non_blocking_failed_count,
-		passed = not has_blocking_failed,
+		failed_count = failed_count,
+		expected_failed_assertions = expected_failed_assertions,
+		passed = failed_count == expected_failed_assertions,
 		assertions = active.assertion_results,
 	}
 end
@@ -294,9 +292,6 @@ local function finalize_active_scenario()
 	else
 		harness.results.summary.failed = harness.results.summary.failed + 1
 	end
-	harness.results.summary.blocking_failed = harness.results.summary.blocking_failed + scenario_result.blocking_failed_count
-	harness.results.summary.non_blocking_failed = harness.results.summary.non_blocking_failed + scenario_result.non_blocking_failed_count
-	harness.results.summary.expected_non_blocking_failed = harness.results.summary.expected_non_blocking_failed + (scenario_result.expected_non_blocking_failed_count or 0)
 
 	call_main_mod("set_test_overrides", nil)
 	harness.active = nil

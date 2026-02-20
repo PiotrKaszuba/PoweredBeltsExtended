@@ -19,6 +19,13 @@ class RunConfig:
     until_tick: int
     powered_belts_enabled: bool = True
     runtime_dirname: str | None = None
+    remove_runtime_dir_on_exit: bool = True
+
+
+@dataclass(frozen=True)
+class BackendRunResult:
+    result_file: Path
+    runtime_root: Path
 
 
 @dataclass(frozen=True)
@@ -210,3 +217,8 @@ def run_factorio_command(
         timeout=timeout_seconds,
         check=False,
     )
+
+
+def cleanup_runtime_dir(runtime_root: Path) -> None:
+    if runtime_root.exists():
+        shutil.rmtree(runtime_root)

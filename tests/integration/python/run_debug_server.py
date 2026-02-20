@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from .backends.base import RunConfig, find_free_port, run_factorio_command, stage_runtime
+from .backends.base import RunConfig, RuntimePaths, cleanup_runtime_dir, find_free_port, run_factorio_command, stage_runtime
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,7 +38,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--no-initial-reset", action="store_true", help="Do not reset/pause harness state on startup.")
     parser.add_argument("--console-log", default="", help="Optional path for Factorio --console-log output.")
+    parser.add_argument(
+        "--remove-runtime-dir-on-exit",
+        choices=("true", "false"),
+        default=os.environ.get("PBE_DEBUG_REMOVE_RUNTIME_DIR_ON_EXIT", "true"),
+        help="Remove staged debug runtime directory on exit (default: true).",
+    )
     return parser.parse_args()
+
+
+def _parse_bool_option(name: str, value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise RuntimeError(f"Invalid value for {name}: {value!r}. Expected 'true' or 'false'.")
 
 
 def _resolve_factorio_bin(arg_value: Path | None) -> Path:
@@ -50,7 +65,7 @@ def _resolve_factorio_bin(arg_value: Path | None) -> Path:
     return factorio_bin
 
 
-def _prepare_world(config: RunConfig, allow_commands: str) -> tuple[Path, Path, Path, Path, Path]:
+def _prepare_world(config: RunConfig, allow_commands: str) -> RuntimePaths:
     runtime = stage_runtime(config)
     result = run_factorio_command(
         config.factorio_bin,
@@ -89,7 +104,7 @@ def _prepare_world(config: RunConfig, allow_commands: str) -> tuple[Path, Path, 
     else:
         settings["allow_commands"] = "admins-only"
     runtime.server_settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    return runtime.runtime_root, runtime.mods_dir, runtime.config_path, runtime.save_path, runtime.server_settings_path
+    return runtime
 
 
 def _wait_for_tcp_listener(port: int, process: subprocess.Popen[object], timeout_seconds: int = 90) -> None:
@@ -152,6 +167,12 @@ def _rcon_send_startup_reset(rcon_port: int, password: str, process: subprocess.
 
 def main() -> int:
     args = parse_args()
+    try:
+        remove_runtime_dir_on_exit = _parse_bool_option("--remove-runtime-dir-on-exit", args.remove_runtime_dir_on_exit)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
     repo_root = Path(__file__).resolve().parents[3]
     artifacts_dir = args.artifacts_dir or (repo_root / "tests" / "artifacts")
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -175,10 +196,12 @@ def main() -> int:
         until_tick=0,
         powered_belts_enabled=args.mod_state == "enabled",
         runtime_dirname=runtime_dirname or None,
+        remove_runtime_dir_on_exit=remove_runtime_dir_on_exit,
     )
 
+    runtime: RuntimePaths | None = None
     try:
-        runtime_root, mods_dir, config_path, save_path, server_settings_path = _prepare_world(
+        runtime = _prepare_world(
             config,
             allow_commands=args.allow_commands,
         )
@@ -190,18 +213,18 @@ def main() -> int:
     rcon_port = args.rcon_port if args.rcon_port > 0 else find_free_port()
     rcon_password = "pbe-debug-rcon-password"
 
-    console_log_path = Path(args.console_log) if args.console_log else (runtime_root / "debug-server.log")
+    console_log_path = Path(args.console_log) if args.console_log else (runtime.runtime_root / "debug-server.log")
 
     cmd = [
         str(factorio_bin),
         "--mod-directory",
-        str(mods_dir),
+        str(runtime.mods_dir),
         "--config",
-        str(config_path),
+        str(runtime.config_path),
         "--start-server",
-        str(save_path),
+        str(runtime.save_path),
         "--server-settings",
-        str(server_settings_path),
+        str(runtime.server_settings_path),
         "--bind",
         args.host,
         "--port",
@@ -215,11 +238,12 @@ def main() -> int:
         str(console_log_path),
     ]
 
-    print(f"Debug runtime root: {runtime_root}")
+    print(f"Debug runtime root: {runtime.runtime_root}")
     print(f"Connect from GUI to: {args.host}:{game_port}")
     print(f"RCON port: {rcon_port}")
     print(f"PoweredBeltsExtended: {args.mod_state}")
     print(f"allow_commands: {args.allow_commands}")
+    print(f"remove_runtime_dir_on_exit: {args.remove_runtime_dir_on_exit}")
     print(f"Console log: {console_log_path}")
     print("Press Ctrl+C to stop the server.")
 
@@ -235,8 +259,8 @@ def main() -> int:
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_outage_restore_name_only","pbe-setup-straight")'
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_outage_restore_preserve","pbe-setup-straight")'
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_preserve","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_name_only_canary","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_disabled_canary","pbe-setup-straight")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_name_only_negative","pbe-setup-straight")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_disabled_negative","pbe-setup-straight")'
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","scan_recovery_smoke","pbe-setup-straight")'
             )
         return process.wait()
@@ -247,6 +271,12 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             process.kill()
         return 130
+    finally:
+        if remove_runtime_dir_on_exit and runtime is not None:
+            try:
+                cleanup_runtime_dir(runtime.runtime_root)
+            except Exception as exc:
+                print(f"Warning: failed to remove runtime directory {runtime.runtime_root}: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

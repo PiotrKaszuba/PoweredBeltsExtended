@@ -1,35 +1,16 @@
-# Powered Belts Extended Test Suite
+# Powered Belts Extended Integration Tests
 
-This repository contains two automated suites:
-
-1. Lua unit tests (fast logic checks).
-2. In-engine integration tests (headless Factorio simulation).
+This repository uses in-engine integration tests (headless Factorio simulation).
 
 ## Prerequisites
 
-1. `Lua 5.2+` on `PATH`.
-2. `Python 3.11+` on `PATH`.
-3. Factorio 2.0 binary set via `FACTORIO_BIN`.
-4. LuaUnit installed (for example `luarocks install luaunit`).
+1. `Python 3.11+` on `PATH`.
+2. Factorio 2.0 binary set via `FACTORIO_BIN`.
 
 Install Python dependencies:
 
 ```bash
 python -m pip install -r tests/integration/python/requirements.txt
-```
-
-## Run Unit Tests
-
-PowerShell:
-
-```powershell
-./scripts/test-unit.ps1
-```
-
-POSIX shell:
-
-```bash
-./scripts/test-unit.sh
 ```
 
 ## Run Integration Tests
@@ -40,6 +21,8 @@ PowerShell:
 ./scripts/test-integration.ps1
 # or explicit mode:
 python -m tests.integration.python.run_integration --mod-state both
+# keep runtime dirs for inspection:
+python -m tests.integration.python.run_integration --mod-state both --remove-runtime-dir-on-exit false
 ```
 
 POSIX shell:
@@ -48,6 +31,8 @@ POSIX shell:
 ./scripts/test-integration.sh
 # or explicit mode:
 python -m tests.integration.python.run_integration --mod-state both
+# keep runtime dirs for inspection:
+python -m tests.integration.python.run_integration --mod-state both --remove-runtime-dir-on-exit false
 ```
 
 Run-mode strategy and troubleshooting notes:
@@ -70,11 +55,14 @@ POSIX shell:
 
 The command starts a localhost server without `--until-tick`, prints the connection address, and pauses/reset harness state on startup.
 By default it uses `allow_commands=true` so GUI `/c` commands work in debug sessions.
+By default it removes the staged runtime directory on exit (`--remove-runtime-dir-on-exit true`).
 
 Example with explicit setting:
 
 ```powershell
 ./scripts/run-debug-server.ps1 --allow-commands true
+# keep runtime dir after exit:
+./scripts/run-debug-server.ps1 --allow-commands true --remove-runtime-dir-on-exit false
 ```
 
 Use a stable runtime directory (so paths stay constant between runs):
@@ -89,22 +77,14 @@ To launch GUI client with the exact same staged mods and auto-connect:
 ./scripts/run-debug-client.ps1 -RuntimeRoot "<path printed by run-debug-server>" -Port <server-port>
 ```
 
-## Fixture Pipeline
+## Layout Fixtures
 
-Blueprint fixture sources live in `tests/fixtures/blueprints/*.txt`.
-Run the preprocessor to generate normalized layouts:
+Layouts are maintained directly as Lua modules in:
 
-```bash
-python tests/integration/python/preprocess_blueprints.py
-```
-
-Generated outputs:
-
-1. `tests/fixtures/layouts/*.json` (normalized layout data).
-2. `tests/integration/harness_mod/layouts_generated/*.lua` (runtime layout modules).
+1. `tests/integration/harness_mod/layouts_generated/*.lua`
+2. `tests/integration/harness_mod/layouts_generated/index.lua`
 
 ## Notes
 
 1. Core runtime placement does not use `LuaSurface.create_entities_from_blueprint_string`.
 2. Integration artifacts are written to `tests/artifacts/`.
-3. `disabled` underground mode scenarios are canary-only (non-blocking by default).
