@@ -4,7 +4,7 @@ Date: 2026.2.17
   Changes:
     - Porting to Factorio 2.0
     - Added multi-surface support.
-    - Underground items are now preserved in a temporary inventory instead of recreated from name and count. This fixes the issue of items losing their properties (e.g. internal equipment) when underground belts lose power.
+    - Items on underground belts that lose/regain power are now preserved in a temporary inventory instead of recreated from name and count for the replacement process. This fixes the issue of items losing their properties (e.g. internal equipment).
     - Added migration for existing saves.
     - Fixes and improvements.
     - Added more thorough consistency checks and fixes on init and configuration change.
