@@ -7,5 +7,5 @@
     "contact": "Discussion thread in this mod.",
     "homepage": "",
     "factorio_version": "2.0",
-    "dependencies": ["base >= 2.0", "! PoweredBelts", "! equipment-gantry", "! ElectricPoweredBelts", "! ElectricPoweredBeltsFixed"]
+    "dependencies": ["base >= 2.0", "! PoweredBelts", "! ElectricPoweredBelts", "! ElectricPoweredBeltsFixed"]
 }
