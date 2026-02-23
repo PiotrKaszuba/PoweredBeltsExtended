@@ -13,15 +13,13 @@ local function make_assertion_result(checkpoint_tick, assertion, passed, message
 end
 
 local function evaluate_transfer(active, assertion)
-	local source = world.get_referenced_entity(active, assertion.source_ref)
-	local sink = world.get_referenced_entity(active, assertion.sink_ref)
-	local source_inventory = world.resolve_inventory(source)
-	local sink_inventory = world.resolve_inventory(sink)
-	if source_inventory == nil or sink_inventory == nil then
+	local source_inventories = world.get_referenced_inventories(active, assertion.source_ref)
+	local sink_inventories = world.get_referenced_inventories(active, assertion.sink_ref)
+	if #source_inventories == 0 or #sink_inventories == 0 then
 		return false, "Missing transfer inventories", nil
 	end
 	local expected = world.stack_list_to_map(assertion.expected_contents)
-	local sink_contents_raw = sink_inventory.get_contents()
+	local sink_contents_raw = world.aggregate_inventory_contents(sink_inventories)
 	local sink_contents = world.contents_to_name_count_map(sink_contents_raw)
 	local passed = world.maps_equal(expected, sink_contents)
 	local message = "Sink contents match expected"
@@ -29,14 +27,14 @@ local function evaluate_transfer(active, assertion)
 		message = "Sink contents mismatch"
 	end
 	if assertion.source_should_be_empty then
-		local source_total = source_inventory.get_item_count()
+		local source_total = world.aggregate_inventory_total_count(source_inventories)
 		if source_total > 0 then
 			passed = false
 			message = message .. "; source not empty"
 		end
 	end
 	if assertion.compare_stack_fingerprints then
-		local sink_fingerprint = world.inventory_fingerprint(sink_inventory)
+		local sink_fingerprint = world.aggregate_inventory_fingerprint(sink_inventories)
 		if not world.maps_equal(active.source_baseline_fingerprint or {}, sink_fingerprint) then
 			passed = false
 			message = message .. "; stack fingerprints differ"
@@ -50,16 +48,14 @@ local function evaluate_transfer(active, assertion)
 end
 
 local function evaluate_item_conservation(active, assertion)
-	local source = world.get_referenced_entity(active, assertion.source_ref)
-	local sink = world.get_referenced_entity(active, assertion.sink_ref)
-	local source_inventory = world.resolve_inventory(source)
-	local sink_inventory = world.resolve_inventory(sink)
-	if source_inventory == nil or sink_inventory == nil then
+	local source_inventories = world.get_referenced_inventories(active, assertion.source_ref)
+	local sink_inventories = world.get_referenced_inventories(active, assertion.sink_ref)
+	if #source_inventories == 0 or #sink_inventories == 0 then
 		return false, "Missing transfer inventories", nil
 	end
 
-	local source_count = source_inventory.get_item_count()
-	local sink_count = sink_inventory.get_item_count()
+	local source_count = world.aggregate_inventory_total_count(source_inventories)
+	local sink_count = world.aggregate_inventory_total_count(sink_inventories)
 	local expected_total = 0
 	for _, stack in pairs(active.expected_contents or {}) do
 		expected_total = expected_total + (stack.count or 0)
@@ -129,12 +125,11 @@ function M.run(active, checkpoint_tick, assertion, call_main_mod)
 	end
 
 	if assertion.type == "sink_count_less_than" then
-		local sink = world.get_referenced_entity(active, assertion.sink_ref)
-		local sink_inventory = world.resolve_inventory(sink)
-		if sink_inventory == nil then
+		local sink_inventories = world.get_referenced_inventories(active, assertion.sink_ref)
+		if #sink_inventories == 0 then
 			return make_assertion_result(checkpoint_tick, assertion, false, "Missing sink inventory")
 		end
-		local count = sink_inventory.get_item_count(assertion.item_name)
+		local count = world.aggregate_inventory_total_count(sink_inventories, assertion.item_name)
 		local max_count = assertion.max_count or 0
 		local passed = count <= max_count
 		return make_assertion_result(checkpoint_tick, assertion, passed, "sink=" .. count .. ", max=" .. max_count, {

@@ -253,15 +253,29 @@ def main() -> int:
             _rcon_send_startup_reset(rcon_port, rcon_password, process)
             print("Harness reset complete and game paused at startup.")
             print(
-                "To snapshot setup state from GUI console:\n"
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_straight_name_only_basic","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_straight_name_only_mixed","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_outage_restore_name_only","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_outage_restore_preserve","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_preserve","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_name_only_negative","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_disabled_negative","pbe-setup-straight")'
-                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","scan_recovery_smoke","pbe-setup-straight")'
+                "Suggested GUI console commands:\n"
+                '\n-- Snapshot setup only (auto-save name defaults to pbe-setup-<scenario-id>)'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_straight_name_only_basic")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_straight_name_only_mixed")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_outage_restore_name_only")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_outage_restore_preserve")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_multi_io_outage_restore_disabled_negative")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_multi_io_outage_restore_name_only")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_multi_io_outage_restore_preserve")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_preserve")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_name_only_negative")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_disabled_negative")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","scan_recovery_smoke")'
+                '\n\n-- Setup and keep scenario active so timed actions/checkpoints continue after unpausing'
+                '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","transfer_underground_multi_io_outage_restore_preserve")'
+                '\n/c game.tick_paused = false'
+                '\n\n-- Run scenario from scratch (no setup snapshot)'
+                '\n/c remote.call("pbe_integration_harness","run_scenario","transfer_underground_multi_io_outage_restore_preserve")'
+                '\n/c game.tick_paused = false'
+                '\n\n-- Optional: setup with explicit researched technologies override'
+                '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","transfer_straight_name_only_basic",nil,{researched_technologies={"inserter-capacity-bonus-1"}})'
+                '\n\n-- Inspect current results'
+                '\n/c game.print(helpers.table_to_json(remote.call("pbe_integration_harness","get_results")) )'
             )
         return process.wait()
     except KeyboardInterrupt:

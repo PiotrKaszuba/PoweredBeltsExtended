@@ -327,31 +327,155 @@ function M.place_layout(layout, surface)
 end
 
 function M.get_referenced_entity(active, reference_name)
+	local entities = M.get_referenced_entities(active, reference_name)
+	for _, entity in ipairs(entities) do
+		if entity and entity.valid then
+			return entity
+		end
+	end
+	return nil
+end
+
+local function resolve_reference_entity_ids(active, reference_name)
 	local entity_id = reference_name
 	if active.layout.references and active.layout.references[reference_name] ~= nil then
 		entity_id = active.layout.references[reference_name]
 	end
-	return active.placed_entities[entity_id]
+	if type(entity_id) == "table" then
+		return entity_id
+	end
+	return {entity_id}
+end
+
+function M.get_referenced_entities(active, reference_name)
+	local entity_ids = resolve_reference_entity_ids(active, reference_name)
+	local entities = {}
+	local function append_entity(entity_id)
+		local entity = active.placed_entities[entity_id]
+		if entity ~= nil then
+			entities[#entities + 1] = entity
+		end
+	end
+	for _, entity_id in ipairs(entity_ids) do
+		append_entity(entity_id)
+	end
+	if #entities == 0 then
+		for _, entity_id in pairs(entity_ids) do
+			append_entity(entity_id)
+		end
+	end
+	return entities
+end
+
+function M.get_referenced_inventories(active, reference_name)
+	local inventories = {}
+	for _, entity in ipairs(M.get_referenced_entities(active, reference_name)) do
+		local inventory = M.resolve_inventory(entity)
+		if inventory ~= nil then
+			inventories[#inventories + 1] = inventory
+		end
+	end
+	return inventories
+end
+
+function M.aggregate_inventory_contents(inventories)
+	local totals = {}
+	for _, inventory in ipairs(inventories or {}) do
+		local ok, contents = pcall(function()
+			return inventory.get_contents()
+		end)
+		if ok and contents ~= nil then
+			local mapped = M.contents_to_name_count_map(contents)
+			for item_name, count in pairs(mapped) do
+				totals[item_name] = (totals[item_name] or 0) + count
+			end
+		end
+	end
+	return totals
+end
+
+function M.aggregate_inventory_total_count(inventories, item_name)
+	local total = 0
+	for _, inventory in ipairs(inventories or {}) do
+		local ok, count = pcall(function()
+			if item_name ~= nil then
+				return inventory.get_item_count(item_name)
+			end
+			return inventory.get_item_count()
+		end)
+		if ok and type(count) == "number" then
+			total = total + count
+		end
+	end
+	return total
+end
+
+function M.aggregate_inventory_fingerprint(inventories)
+	local combined = {}
+	for _, inventory in ipairs(inventories or {}) do
+		local fingerprint = M.inventory_fingerprint(inventory)
+		for signature, count in pairs(fingerprint) do
+			combined[signature] = (combined[signature] or 0) + count
+		end
+	end
+	return combined
 end
 
 local function apply_fill_inventory_action(active, action)
-	local target = M.get_referenced_entity(active, action.target_ref)
-	local inventory = M.resolve_inventory(target)
-	if inventory == nil then
+	local inventories = M.get_referenced_inventories(active, action.target_ref)
+	if #inventories == 0 then
 		return
 	end
-	inventory.clear()
-	for _, stack in pairs(action.stacks or {}) do
-		if stack.exported ~= nil then
+	for _, inventory in ipairs(inventories) do
+		inventory.clear()
+	end
+
+	local function resolve_stack_target_inventories(stack)
+		local target_ref = stack.target_ref or stack.target_entity_id
+		if target_ref == nil then
+			return inventories
+		end
+		local targeted = M.get_referenced_inventories(active, target_ref)
+		if #targeted == 0 then
+			return inventories
+		end
+		return targeted
+	end
+
+	local function insert_exported_stack(exported, target_inventories)
+		for _, inventory in ipairs(target_inventories) do
 			for i = 1, #inventory do
 				local slot = inventory[i]
 				if not slot.valid_for_read then
-					slot.import_stack(stack.exported)
-					break
+					local ok_import, imported = pcall(function()
+						return slot.import_stack(exported)
+					end)
+					if ok_import and imported then
+						return true
+					end
 				end
 			end
+		end
+		return false
+	end
+
+	local function insert_named_stack(item_name, item_count, target_inventories)
+		local remaining = item_count or 1
+		for _, inventory in ipairs(target_inventories) do
+			if remaining <= 0 then
+				break
+			end
+			local inserted = inventory.insert{name = item_name, count = remaining}
+			remaining = remaining - (inserted or 0)
+		end
+	end
+
+	for _, stack in pairs(action.stacks or {}) do
+		local target_inventories = resolve_stack_target_inventories(stack)
+		if stack.exported ~= nil then
+			insert_exported_stack(stack.exported, target_inventories)
 		elseif stack.name ~= nil then
-			inventory.insert{name = stack.name, count = stack.count or 1}
+			insert_named_stack(stack.name, stack.count or 1, target_inventories)
 		end
 	end
 end
@@ -372,12 +496,14 @@ local function apply_set_surface_daylight_action(active, action)
 end
 
 local function apply_insert_stateful_power_armor_action(active, action)
-	local target = M.get_referenced_entity(active, action.target_ref)
-	local inventory = M.resolve_inventory(target)
-	if inventory == nil then
+	local inventories = M.get_referenced_inventories(active, action.target_ref)
+	if #inventories == 0 then
 		return
 	end
-	inventory.clear()
+	for _, inventory in ipairs(inventories) do
+		inventory.clear()
+	end
+	local inventory = inventories[1]
 	local slot = nil
 	for i = 1, #inventory do
 		if not inventory[i].valid_for_read then

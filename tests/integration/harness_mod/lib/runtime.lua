@@ -116,37 +116,6 @@ local function ensure_harness_storage()
 	return harness
 end
 
-local function inventory_total_count(inventory)
-	if inventory == nil then
-		return -1
-	end
-	local total = 0
-	local ok, contents = pcall(function()
-		return inventory.get_contents()
-	end)
-	if not ok or contents == nil then
-		return -1
-	end
-
-	local function add_numeric_values(value)
-		if type(value) == "number" then
-			total = total + value
-			return
-		end
-		if type(value) ~= "table" then
-			return
-		end
-		for _, nested in pairs(value) do
-			add_numeric_values(nested)
-		end
-	end
-
-	for _, count in pairs(contents) do
-		add_numeric_values(count)
-	end
-	return total
-end
-
 local function burner_fuel_count(entity)
 	if not (entity and entity.valid and entity.burner and entity.burner.inventory) then
 		return -1
@@ -158,6 +127,26 @@ local function burner_fuel_count(entity)
 		return -1
 	end
 	return count or 0
+end
+
+local function burner_fuel_count_by_reference(active, reference_name)
+	local entities = world.get_referenced_entities(active, reference_name)
+	if #entities == 0 then
+		return -1
+	end
+	local total = 0
+	local has_any = false
+	for _, entity in ipairs(entities) do
+		local count = burner_fuel_count(entity)
+		if count >= 0 then
+			total = total + count
+			has_any = true
+		end
+	end
+	if not has_any then
+		return -1
+	end
+	return total
 end
 
 local function log_tick_heartbeat()
@@ -173,17 +162,17 @@ local function log_tick_heartbeat()
 	local output_fuel = -1
 	if harness.active ~= nil and harness.active.scenario ~= nil then
 		active_id = tostring(harness.active.scenario.id or "unknown")
-		local source = world.get_referenced_entity(harness.active, "source")
-		local sink = world.get_referenced_entity(harness.active, "sink")
-		local source_inventory = world.resolve_inventory(source)
-		local sink_inventory = world.resolve_inventory(sink)
-		source_total = inventory_total_count(source_inventory)
-		sink_total = inventory_total_count(sink_inventory)
+		local source_inventories = world.get_referenced_inventories(harness.active, "source")
+		local sink_inventories = world.get_referenced_inventories(harness.active, "sink")
+		if #source_inventories > 0 then
+			source_total = world.aggregate_inventory_total_count(source_inventories)
+		end
+		if #sink_inventories > 0 then
+			sink_total = world.aggregate_inventory_total_count(sink_inventories)
+		end
 
-		local input_inserter = world.get_referenced_entity(harness.active, "input_inserter")
-		local output_inserter = world.get_referenced_entity(harness.active, "output_inserter")
-		input_fuel = burner_fuel_count(input_inserter)
-		output_fuel = burner_fuel_count(output_inserter)
+		input_fuel = burner_fuel_count_by_reference(harness.active, "input_inserter")
+		output_fuel = burner_fuel_count_by_reference(harness.active, "output_inserter")
 	end
 	log(string.format(
 		"[PBE-HARNESS] tick=%d speed=%.3f paused=%s active=%s queue=%d source=%d sink=%d input_fuel=%d output_fuel=%d",
@@ -222,11 +211,49 @@ local function build_layout_for_scenario(layout, scenario)
 
 	local scenario_layout = deep_copy(layout)
 	for _, entity_def in ipairs(scenario_layout.entities or {}) do
-		if entity_def.id == "input_inserter" or entity_def.id == "output_inserter" then
+		if type(entity_def.id) == "string" and string.find(entity_def.id, "inserter", 1, true) ~= nil then
 			entity_def.name = inserter_name
 		end
 	end
 	return scenario_layout
+end
+
+local function collect_researched_technology_names(scenario, setup_options)
+	local names = {}
+	local function add_all(values)
+		if type(values) ~= "table" then
+			return
+		end
+		for _, value in pairs(values) do
+			if type(value) == "string" and value ~= "" then
+				names[value] = true
+			end
+		end
+	end
+	add_all(scenario and scenario.researched_technologies)
+	add_all(setup_options and setup_options.researched_technologies)
+	return names
+end
+
+local function apply_scenario_research(scenario, setup_options)
+	local force = game and game.forces and game.forces.player
+	if not (force and force.valid and force.technologies) then
+		return
+	end
+	local researched_names = collect_researched_technology_names(scenario, setup_options)
+	for name, technology in pairs(force.technologies) do
+		if technology and technology.valid and technology.researched ~= nil then
+			local should_be_researched = researched_names[name] == true
+			if technology.researched ~= should_be_researched then
+				pcall(function()
+					technology.researched = should_be_researched
+				end)
+			end
+		end
+	end
+	pcall(function()
+		force.reset_technology_effects()
+	end)
 end
 
 local function write_results_if_complete()
@@ -298,7 +325,7 @@ local function finalize_active_scenario()
 	write_results_if_complete()
 end
 
-local function start_scenario(scenario)
+local function start_scenario(scenario, setup_options)
 	local harness = ensure_harness_storage()
 	apply_test_game_speed()
 	local layout = layouts[scenario.layout_id]
@@ -310,6 +337,7 @@ local function start_scenario(scenario)
 	local surface = game.surfaces["nauvis"] or game.surfaces[1]
 	local area = layout.area or {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}}
 	world.clear_area(surface, area)
+	apply_scenario_research(scenario, setup_options)
 
 	call_main_mod("set_test_overrides", scenario.settings_overrides or {})
 	local placed_entities = world.place_layout(layout, surface)
@@ -342,9 +370,8 @@ local function start_scenario(scenario)
 		active.next_action_idx = active.next_action_idx + 1
 	end
 
-	local source = world.get_referenced_entity(active, "source")
-	local source_inventory = world.resolve_inventory(source)
-	active.source_baseline_fingerprint = world.inventory_fingerprint(source_inventory)
+	local source_inventories = world.get_referenced_inventories(active, "source")
+	active.source_baseline_fingerprint = world.aggregate_inventory_fingerprint(source_inventories)
 	for _, action in pairs(active.scenario.actions) do
 		if action.type == "fill_inventory" and action.target_ref == "source" then
 			active.expected_contents = action.stacks or {}
@@ -469,7 +496,7 @@ function M.run_scenario(id)
 	return true
 end
 
-function M.capture_scenario_setup(id, save_name)
+local function setup_scenario_state(id, save_name, setup_options)
 	local scenario = scenarios.find_by_id(id)
 	if scenario == nil then
 		return {ok = false, error = "Unknown scenario id: " .. tostring(id)}
@@ -480,32 +507,74 @@ function M.capture_scenario_setup(id, save_name)
 	harness.queue = {}
 	harness.active = nil
 	apply_test_game_speed()
-	start_scenario(scenario)
+	start_scenario(scenario, setup_options)
 
-	-- Freeze at setup state so the created save is an inspection baseline.
-	game.tick_paused = true
-	harness.active = nil
-	harness.queue = {}
-
-	local final_save_name = save_name
-	if final_save_name == nil or final_save_name == "" then
-		final_save_name = "pbe-setup-" .. tostring(id)
+	local should_pause = setup_options == nil or setup_options.pause ~= false
+	if should_pause then
+		game.tick_paused = true
 	end
 
-	local ok, err = pcall(function()
-		game.auto_save(final_save_name)
-	end)
-	if not ok then
-		return {ok = false, error = "auto_save failed: " .. tostring(err)}
+	local should_save = setup_options == nil or setup_options.save_snapshot ~= false
+	local final_save_name = nil
+	if should_save then
+		final_save_name = save_name
+		if final_save_name == nil or final_save_name == "" then
+			final_save_name = "pbe-setup-" .. tostring(id)
+		end
+		local ok, err = pcall(function()
+			game.auto_save(final_save_name)
+		end)
+		if not ok then
+			return {ok = false, error = "auto_save failed: " .. tostring(err)}
+		end
+		log(string.format("[PBE-HARNESS] setup snapshot saved: %s", final_save_name))
 	end
 
-	log(string.format("[PBE-HARNESS] setup snapshot saved: %s", final_save_name))
+	local keep_active = setup_options ~= nil and setup_options.keep_active == true
+	if not keep_active then
+		harness.active = nil
+		harness.queue = {}
+	end
+
 	return {
 		ok = true,
 		scenario_id = id,
 		save_name = final_save_name,
 		tick = game.tick,
+		active = keep_active,
 	}
+end
+
+function M.capture_scenario_setup(id, save_name, setup_options)
+	local options = {
+		keep_active = false,
+		pause = true,
+		save_snapshot = true,
+		researched_technologies = nil,
+	}
+	if type(setup_options) == "table" then
+		options.researched_technologies = setup_options.researched_technologies
+	end
+	return setup_scenario_state(id, save_name, options)
+end
+
+function M.prepare_scenario_setup(id, save_name, setup_options)
+	local options = {
+		keep_active = true,
+		pause = true,
+		save_snapshot = true,
+		researched_technologies = nil,
+	}
+	if type(setup_options) == "table" then
+		if setup_options.save_snapshot == false then
+			options.save_snapshot = false
+		end
+		if setup_options.pause == false then
+			options.pause = false
+		end
+		options.researched_technologies = setup_options.researched_technologies
+	end
+	return setup_scenario_state(id, save_name, options)
 end
 
 function M.run_suite(filter)
