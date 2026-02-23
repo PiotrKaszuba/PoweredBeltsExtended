@@ -22,13 +22,15 @@ The mod creates hidden electric power entities for:
 
 This includes vanilla and modded prototypes present in the game.
 
+Helper power entities and unpowered belt variants are localized and hidden from Factoriopedia to reduce UI clutter.
+
 ### Power Usage Scales by Entity
 Power draw is computed from belt speed and entity type, then scaled by startup settings and efficiency research.
 
 Default type multipliers:
 
 - Transport belt: `x1`
-- Underground belt: `x(max_distance + 3)/2` (distance+1 for the segment + 2 for going up and down)
+- Underground belt: `x(max_distance + 3)/2` (distance+1 for the segment + 2 for going up and down, divided by 2 ends)
 - Splitter: `x5`
 - Loader 1x1: `x5`
 - Loader: `x10`
@@ -83,6 +85,17 @@ Five upgrade levels are added (`efficient-belts-1` to `efficient-belts-5`).
 - Incremental on-tick processing (`operations-per-tick`) to bound update cost.
 - Full consistency checks that repair error states are run on init and configuration changes.
 - Supports multiple surfaces and keeps entity tracking partitioned per surface.
+- Unpowered variants preserve original `placeable_by` which enables pipette and blueprint usage.
+
+---
+
+## Known Limitations
+
+- Tooltip power values on item/entity hover are static summaries (base value, per-tech multiplier, max-tech value), not live values at current efficiencytech level.
+- Underground belt power draw is currently based on prototype max distance, not the actually built pair length.
+- When placing an underground belt manually against an existing unpowered endpoint, vanilla underground distance/arrows helper overlay will not appear even if placement is valid.
+- Production statistics for deconstruction will show separate entries for powered and unpowered variants of the same belt entity (built entities are all counted as powered variants).
+- Electric network statistics will split historical consumption across multiple hidden power-interface prototypes when viewing a time range that spans different efficiency tech levels.
 
 ---
 
