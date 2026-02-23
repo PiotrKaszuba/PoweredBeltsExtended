@@ -49,7 +49,7 @@ local function create_power_entity_def(v, i, ei, usage_name, upgrade_name)
 		max_health = 1,
 		resistances = resistances_immune,
 		collision_mask = {layers = {}, colliding_with_tiles_only = true},
-		collision_box = nil,
+		collision_box = v.collision_box,
 		selection_box = nil,
 		selectable_in_game = false,
 		energy_source = {
