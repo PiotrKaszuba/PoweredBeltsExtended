@@ -2,12 +2,11 @@
 Version: 1.2.1
 Date: 2026.2.22
   Changes:
-    - Added localization to hidden power-interface entities and unpowered belt variants.
-    - Hidden helper power interfaces and unpowered belt variants from Factoriopedia.
-    - Added static tooltip for items and entities showing their power usage with a formula:
-      base kW, per-tech multiplier, and value at max tech level.
-    - Unpowered entities now work with pipette are blueprintable.
-    - Underground belts now use (max_distance + 3)/2 power multiplier: a pair splits power for the whole segment (distance+1) + 2 for going up and down
+    - Added localization for hidden power-interface entities and unpowered belt variants.
+    - Hid helper power interfaces and unpowered belt variants from Factoriopedia.
+    - Added a static tooltip (items and entities) that shows power usage as a formula: base kW, per-tech multiplier, and value at max tech level.
+    - Unpowered entities now work with pipette and are blueprintable.
+    - Underground belts now use the (max_distance + 3) / 2 formula for power usage instead of (max_distance + 2). See README.md or mod portal description for more details.
 ---------------------------------------------------------------------------------------------------
 Version: 1.2.0
 Date: 2026.2.17

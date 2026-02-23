@@ -30,10 +30,12 @@ Power draw is computed from belt speed and entity type, then scaled by startup s
 Default type multipliers:
 
 - Transport belt: `x1`
-- Underground belt: `x(max_distance + 3)/2` (distance+1 for the segment + 2 for going up and down, divided by 2 ends)
+- Underground belt: `x(max_distance + 3) / 2`
 - Splitter: `x5`
 - Loader 1x1: `x5`
 - Loader: `x10`
+
+Underground belt power is calculated from the pair’s maximum segment length, plus 2 for down/up transitions, then divided by 2 so each end consumes half.
 
 ### On/Off Behavior During Brownouts
 Belts are switched between powered and unpowered variants based on local stored energy.
