@@ -28,7 +28,7 @@ Power draw is computed from belt speed and entity type, then scaled by startup s
 Default type multipliers:
 
 - Transport belt: `x1`
-- Underground belt: `x(max_distance + 2)`
+- Underground belt: `x(max_distance + 3)/2` (distance+1 for the segment + 2 for going up and down)
 - Splitter: `x5`
 - Loader 1x1: `x5`
 - Loader: `x10`
