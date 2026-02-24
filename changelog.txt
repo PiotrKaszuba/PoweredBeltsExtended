@@ -2,7 +2,10 @@
 Version: 1.2.2
 Date: 2026.2.24
   Changes:
-    - Added startup setting `powered-belts-efficiency-tech-cost-per-level` to scale efficiency technology science cost.
+    - Added startup setting 'powered-belts-num-upgrades' for configurable number of efficiency technology levels.
+    - Added startup setting 'powered-belts-efficiency-tech-cost-per-level' to scale efficiency technology science cost.
+    - Added startup setting 'powered-belts-speed-exponent' for configurable exponent-based speed scaling of belt power usage.
+
 ---------------------------------------------------------------------------------------------------
 Version: 1.2.1
 Date: 2026.2.22
