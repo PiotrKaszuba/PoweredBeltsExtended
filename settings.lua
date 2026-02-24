@@ -36,6 +36,15 @@ data:extend({
     },
     {
         type = "int-setting",
+        name = "powered-belts-efficiency-tech-cost-per-level",
+        setting_type = "startup",
+        default_value = 50,
+        minimum_value = 25,
+        maximum_value = 200,
+        order = "a"
+    },
+    {
+        type = "int-setting",
         name = "powered-belts-num-upgrades",
         setting_type = "startup",
         default_value = 5,

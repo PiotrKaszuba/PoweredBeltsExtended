@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.2.2
+Date: 2026.2.24
+  Changes:
+    - Added startup setting `powered-belts-efficiency-tech-cost-per-level` to scale efficiency technology science cost.
+    - New setting defaults to 50 and supports range 25-200 (0.5x to 4x science cost).
+    - Efficiency technology cost scaling now applies to all levels, including the increasing post-level-6 progression.
+---------------------------------------------------------------------------------------------------
 Version: 1.2.1
 Date: 2026.2.22
   Changes:

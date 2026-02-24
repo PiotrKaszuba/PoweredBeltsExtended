@@ -1,6 +1,8 @@
 local efficient_belts_icon = "__base__/graphics/icons/transport-belt.png"
 local reduction = string.format("%g", settings.startup["powered-belts-upgrade-reduction"].value * 100)
 local num_levels = settings.startup["powered-belts-num-upgrades"].value
+local tech_cost_per_level = settings.startup["powered-belts-efficiency-tech-cost-per-level"].value
+local tech_cost_multiplier = tech_cost_per_level / 50
 
 local level_science = {
 	[1] = {
@@ -69,15 +71,18 @@ local function copy_ingredients(ingredients)
 end
 
 local function get_research_count(level)
+	local base_count
 	if level <= 6 then
-		return 50 * level
+		base_count = 50 * level
+	else
+		local count = 300
+		for current_level = 7, level do
+			count = count + 50 * (current_level - 5)
+		end
+		base_count = count
 	end
 
-	local count = 300
-	for current_level = 7, level do
-		count = count + 50 * (current_level - 5)
-	end
-	return count
+	return math.floor(base_count * tech_cost_multiplier)
 end
 
 local technologies = {}

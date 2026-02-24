@@ -62,6 +62,9 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
 - Each level reduces belt-related power usage by the configured startup fraction.
 - Reduction stacks multiplicatively.
 - Default reduction is `20%` per level (`100% -> 80% -> 64% -> 51.2% -> ...`).
+- Science pack count per level is configurable via `powered-belts-efficiency-tech-cost-per-level` (default `50`).
+  - `25` = half cost (`0.5x`), `50` = vanilla mod default (`1x`), `200` = four times cost (`4x`).
+  - This scaling also applies to the higher incremental costs on levels above 6.
 
 ---
 
@@ -71,6 +74,8 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
 
 - `powered-belts-usage-multiplier` (default `0.2`)
   Scales all belt power usage globally.
+- `powered-belts-efficiency-tech-cost-per-level` (default `50`, min `25`, max `200`)
+  Base science cost per efficiency technology level. `25` = `0.5x`, `50` = `1x`, `200` = `4x`.
 - `powered-belts-num-upgrades` (default `5`, min `0`, max `10`)
   Sets how many efficiency upgrade technologies are generated.
 - `powered-belts-upgrade-reduction` (default `0.2`)
