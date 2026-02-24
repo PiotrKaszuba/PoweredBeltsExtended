@@ -274,6 +274,115 @@ function string:startswith(prefix)
     return self:sub(1, #prefix) == prefix
 end
 
+local function is_unpowered_name(name)
+	return type(name) == "string" and string.match(name, "^unpowered%-") ~= nil
+end
+
+local function base_powered_name(name)
+	if not is_unpowered_name(name) then
+		return name
+	end
+	return string.sub(name, 11)
+end
+
+local function adapt_upgrade_target_name_for_entity(target_name, entity_name)
+	if type(target_name) ~= "string" then
+		return nil
+	end
+	if is_unpowered_name(entity_name) then
+		if is_unpowered_name(target_name) then
+			return target_name
+		end
+		return "unpowered-" .. target_name
+	end
+	return base_powered_name(target_name)
+end
+
+local function read_deconstruction_mark(entity)
+	local ok, marked = pcall(function()
+		return entity.to_be_deconstructed(entity.force)
+	end)
+	if ok then
+		return marked == true
+	end
+	ok, marked = pcall(function()
+		return entity.to_be_deconstructed()
+	end)
+	if ok then
+		return marked == true
+	end
+	return false
+end
+
+local function read_upgrade_mark(entity)
+	local ok, marked = pcall(function()
+		return entity.to_be_upgraded(entity.force)
+	end)
+	if ok then
+		return marked == true
+	end
+	ok, marked = pcall(function()
+		return entity.to_be_upgraded()
+	end)
+	if ok then
+		return marked == true
+	end
+	return false
+end
+
+local function read_upgrade_target_name(entity)
+	local ok, target = pcall(function()
+		return entity.get_upgrade_target()
+	end)
+	if ok and target ~= nil and target.valid and target.name ~= nil then
+		return target.name
+	end
+	return nil
+end
+
+local function capture_entity_planner_state(entity)
+	if not (entity and entity.valid) then
+		return nil
+	end
+	local upgrade_target_name = read_upgrade_target_name(entity)
+	return {
+		deconstruction_marked = read_deconstruction_mark(entity),
+		upgrade_marked = read_upgrade_mark(entity) or upgrade_target_name ~= nil,
+		upgrade_target_name = upgrade_target_name,
+	}
+end
+
+local function apply_entity_planner_state(entity, planner_state)
+	if not (entity and entity.valid and planner_state ~= nil) then
+		return
+	end
+
+	if planner_state.deconstruction_marked then
+		pcall(function()
+			entity.order_deconstruction(entity.force)
+		end)
+	end
+
+	if planner_state.upgrade_marked then
+		local target_name = adapt_upgrade_target_name_for_entity(planner_state.upgrade_target_name, entity.name)
+		local ordered = false
+		if target_name ~= nil and game ~= nil and prototypes.entity ~= nil then
+			local target_prototype = prototypes.entity[target_name]
+			if target_prototype ~= nil then
+				local ok = pcall(function()
+					entity.order_upgrade{force = entity.force, target = target_prototype}
+				end)
+				ordered = ok == true
+			end
+		end
+		if not ordered then
+			pcall(function()
+				entity.order_upgrade{force = entity.force}
+			end)
+		end
+	end
+end
+
 function get_entity_idx(entity)
 	return entity.position.x .. " " .. entity.position.y
 end
@@ -881,7 +990,7 @@ function check_and_clear_lanes(underground, underground_len, replace_context)
 		
 	end
 	
-	if underground.belt_to_ground_type == "input" and n then
+	if underground.belt_to_ground_type == "input" or n == nil then
 		for lane_idx = 3, 4 do
 			local lane = underground.get_transport_line(lane_idx)
 			--[[
@@ -1227,6 +1336,7 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 		own_replace_context = true
 	end
 
+	local planner_state = capture_entity_planner_state(entity)
 	local entity_data = {surface = entity.surface, name = entity.name, position = entity.position, force = entity.force, direction = entity.direction}
 	local is_underground = entity.type == "underground-belt"
 	local n = nil
@@ -1290,6 +1400,8 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 		
 		end
 	end
+
+	apply_entity_planner_state(new_entity, planner_state)
 
 	if own_replace_context and replace_context.temp_inventory ~= nil and replace_context.temp_inventory.valid then
 		replace_context.temp_inventory.destroy()

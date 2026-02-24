@@ -265,6 +265,8 @@ def main() -> int:
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_preserve")'
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_stateful_name_only_negative")'
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","transfer_underground_disabled_negative")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","planner_deconstruction_outage_persistence")'
+                '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","planner_upgrade_outage_persistence")'
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","scan_recovery_smoke")'
                 '\n\n-- Setup and keep scenario active so timed actions/checkpoints continue after unpausing'
                 '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","transfer_underground_multi_io_outage_restore_preserve")'

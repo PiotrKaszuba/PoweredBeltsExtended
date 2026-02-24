@@ -98,6 +98,117 @@ local function make_transfer_scenario(base)
 	return scenario
 end
 
+local function make_planner_state_outage_scenario(base)
+	local refs = base.target_refs or {"belt_2", "underground_input", "line_splitter"}
+	local mark_action = {}
+	for key, value in pairs(base.mark_action or {}) do
+		mark_action[key] = value
+	end
+	mark_action.tick = base.mark_tick or mark_action.tick or 120
+
+	local function build_assertion()
+		local assertion = {
+			type = base.assertion_type,
+			target_refs = refs,
+		}
+		if base.expected_targets ~= nil then
+			assertion.expected_targets = base.expected_targets
+		end
+		return assertion
+	end
+
+	local max_tick = base.max_tick or 1800
+	local off_tick = base.off_tick or 160
+	local on_tick = base.on_tick or 420
+	local pre_outage_check_tick = base.pre_outage_check_tick or 140
+	local outage_check_tick = base.outage_check_tick or 300
+	local post_restore_check_tick = base.post_restore_check_tick or 520
+	local transfer_stacks = base.transfer_stacks or {
+		{name = "iron-ore", count = 20},
+	}
+	local actions = {
+		{
+			tick = 0,
+			type = "fill_inventory",
+			target_ref = "source",
+			stacks = transfer_stacks,
+		},
+		{
+			tick = 0,
+			type = "fuel_burner_inserters",
+			count = base.fuel_count or 100,
+		},
+		mark_action,
+		{
+			tick = off_tick,
+			type = "set_surface_daylight",
+			mode = "midnight",
+		},
+		{
+			tick = on_tick,
+			type = "set_surface_daylight",
+			mode = "full-day",
+		},
+	}
+	if type(base.extra_actions) == "table" then
+		for _, action in pairs(base.extra_actions) do
+			actions[#actions + 1] = action
+		end
+	end
+
+	return {
+		id = base.id,
+		layout_id = base.layout_id or "underground_splitter_line",
+		inserter_name = base.inserter_name or "bulk-inserter",
+		max_tick = max_tick,
+		expected_failed_mod_enabled = base.expected_failed_mod_enabled or 0,
+		expected_failed_mod_disabled = base.expected_failed_mod_disabled or 0,
+		settings_overrides = {
+			underground_item_transfer_mode = base.underground_item_transfer_mode or "name-only",
+			operations_per_tick = base.operations_per_tick or 128,
+		},
+		actions = actions,
+		checkpoints = {
+			{
+				tick = pre_outage_check_tick,
+				assertions = {
+					build_assertion(),
+					{type = "structural_consistency"},
+				},
+			},
+			{
+				tick = outage_check_tick,
+				assertions = {
+					build_assertion(),
+				},
+			},
+			{
+				tick = post_restore_check_tick,
+				assertions = {
+					build_assertion(),
+					{type = "structural_consistency"},
+				},
+			},
+			{
+				tick = max_tick,
+				assertions = {
+					{
+						type = "transfer_complete",
+						source_ref = "source",
+						sink_ref = "sink",
+						expected_contents = transfer_stacks,
+						source_should_be_empty = true,
+						include_ground_items = base.include_ground_items == true,
+						ground_item_names = base.ground_item_names,
+						ground_items_area = base.ground_items_area,
+					},
+					{type = "structural_consistency"},
+				},
+			},
+		},
+	}
+end
+
 local function default_scenarios()
 	return {
 		make_transfer_scenario{
@@ -164,12 +275,20 @@ local function default_scenarios()
 				{name = "iron-plate", count = 60, target_ref = "source_chest_south_left"},
 				{name = "iron-plate", count = 60, target_ref = "source_chest_south_right"},
 			},
-			max_tick = 3600,
+			max_tick = 3000,
 			outage = {
 				off_tick = 320,
-				on_tick = 1120,
-				assert_tick = 800,
+				on_tick = 520,
+				assert_tick = 450,
 				max_sink_during_outage = 280,
+			},
+			extra_checkpoints = {
+				{
+					tick = 3000,
+					assertions = {
+						{type = "item_not_conserved", source_ref = "source", sink_ref = "sink"},
+					},
+				},
 			},
 		},
 		make_transfer_scenario{
@@ -184,11 +303,11 @@ local function default_scenarios()
 				{name = "iron-plate", count = 60, target_ref = "source_chest_south_left"},
 				{name = "iron-plate", count = 60, target_ref = "source_chest_south_right"},
 			},
-			max_tick = 3600,
+			max_tick = 3000,
 			outage = {
 				off_tick = 320,
-				on_tick = 1120,
-				assert_tick = 800,
+				on_tick = 520,
+				assert_tick = 450,
 				max_sink_during_outage = 280,
 			},
 		},
@@ -204,11 +323,11 @@ local function default_scenarios()
 				{name = "iron-plate", count = 60, target_ref = "source_chest_south_left"},
 				{name = "iron-plate", count = 60, target_ref = "source_chest_south_right"},
 			},
-			max_tick = 3600,
+			max_tick = 3000,
 			outage = {
 				off_tick = 320,
-				on_tick = 1120,
-				assert_tick = 800,
+				on_tick = 520,
+				assert_tick = 450,
 				max_sink_during_outage = 280,
 			},
 		},
@@ -298,6 +417,44 @@ local function default_scenarios()
 					assertions = {
 						{type = "item_not_conserved", source_ref = "source", sink_ref = "sink"},
 					},
+				},
+			},
+		},
+		make_planner_state_outage_scenario{
+			id = "planner_deconstruction_outage_persistence",
+			assertion_type = "entities_marked_for_deconstruction",
+			include_ground_items = true,
+			target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
+			mark_action = {
+				type = "order_deconstruction",
+				target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
+			},
+			extra_actions = {
+				{
+					tick = 560,
+					type = "cancel_deconstruction",
+					target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
+				},
+			},
+		},
+		make_planner_state_outage_scenario{
+			id = "planner_upgrade_outage_persistence",
+			assertion_type = "entities_marked_for_upgrade",
+			include_ground_items = true,
+			target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
+			expected_targets = {
+				belt_2 = "fast-transport-belt",
+				underground_input = "fast-underground-belt",
+				underground_output = "fast-underground-belt",
+				line_splitter = "fast-splitter",
+			},
+			mark_action = {
+				type = "order_upgrade",
+				orders = {
+					{target_ref = "belt_2", target_name = "fast-transport-belt"},
+					{target_ref = "underground_input", target_name = "fast-underground-belt"},
+					{target_ref = "underground_output", target_name = "fast-underground-belt"},
+					{target_ref = "line_splitter", target_name = "fast-splitter"},
 				},
 			},
 		},

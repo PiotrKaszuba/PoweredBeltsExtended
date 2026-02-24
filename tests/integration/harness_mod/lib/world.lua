@@ -87,6 +87,86 @@ function M.maps_equal(a, b)
 	return true
 end
 
+local function is_unpowered_name(name)
+	return type(name) == "string" and string.find(name, "unpowered-", 1, true) == 1
+end
+
+function M.base_powered_name(name)
+	if not is_unpowered_name(name) then
+		return name
+	end
+	return string.sub(name, 11)
+end
+
+local function read_deconstruction_mark(entity)
+	local ok, marked = pcall(function()
+		return entity.to_be_deconstructed(entity.force)
+	end)
+	if ok then
+		return marked == true
+	end
+	ok, marked = pcall(function()
+		return entity.to_be_deconstructed()
+	end)
+	if ok then
+		return marked == true
+	end
+	return false
+end
+
+local function read_upgrade_mark(entity)
+	local ok, marked = pcall(function()
+		return entity.to_be_upgraded(entity.force)
+	end)
+	if ok then
+		return marked == true
+	end
+	ok, marked = pcall(function()
+		return entity.to_be_upgraded()
+	end)
+	if ok then
+		return marked == true
+	end
+	return false
+end
+
+local function read_upgrade_target_name(entity)
+	local ok, target = pcall(function()
+		return entity.get_upgrade_target()
+	end)
+	if ok and target ~= nil and target.valid and target.name ~= nil then
+		return target.name
+	end
+	return nil
+end
+
+function M.get_planner_state(entity)
+	if not (entity and entity.valid) then
+		return {
+			valid = false,
+			deconstruction_marked = false,
+			upgrade_marked = false,
+			upgrade_target_name = nil,
+		}
+	end
+
+	local upgrade_target_name = read_upgrade_target_name(entity)
+	local belt_to_ground_type = nil
+	if entity.type == "underground-belt" then
+		belt_to_ground_type = entity.belt_to_ground_type
+	end
+	return {
+		valid = true,
+		name = entity.name,
+		type = entity.type,
+		direction = entity.direction,
+		belt_to_ground_type = belt_to_ground_type,
+		deconstruction_marked = read_deconstruction_mark(entity),
+		upgrade_marked = read_upgrade_mark(entity) or upgrade_target_name ~= nil,
+		upgrade_target_name = upgrade_target_name,
+	}
+end
+
 function M.inventory_fingerprint(inventory)
 	if inventory == nil then
 		return {}
@@ -347,11 +427,108 @@ local function resolve_reference_entity_ids(active, reference_name)
 	return {entity_id}
 end
 
+local function get_layout_entity_definition(active, entity_id)
+	if active == nil or active.layout == nil or type(active.layout.entities) ~= "table" then
+		return nil
+	end
+	for _, entity_def in ipairs(active.layout.entities) do
+		if entity_def.id == entity_id then
+			return entity_def
+		end
+	end
+	return nil
+end
+
+local function get_position_key(position)
+	if type(position) ~= "table" or position.x == nil or position.y == nil then
+		return nil
+	end
+	return tostring(position.x) .. " " .. tostring(position.y)
+end
+
+local function resolve_entity_from_main_mod_storage(active, entity_id)
+	if active == nil or active.surface == nil or (not active.surface.valid) then
+		return nil
+	end
+	if not (remote.interfaces and remote.interfaces.powered_belts_extended and remote.interfaces.powered_belts_extended.get_storage) then
+		return nil
+	end
+
+	local entity_def = get_layout_entity_definition(active, entity_id)
+	if entity_def == nil then
+		return nil
+	end
+
+	local pos_key = get_position_key(entity_def.position)
+	if pos_key == nil then
+		return nil
+	end
+
+	local ok_storage, storage = pcall(function()
+		return remote.call("powered_belts_extended", "get_storage")
+	end)
+	if (not ok_storage) or type(storage) ~= "table" or type(storage.entities) ~= "table" then
+		return nil
+	end
+
+	local by_surface = storage.entities[active.surface.index]
+	if type(by_surface) ~= "table" then
+		return nil
+	end
+
+	local entity = by_surface[pos_key]
+	if entity and entity.valid then
+		return entity
+	end
+	return nil
+end
+
+local function resolve_entity_from_surface(active, entity_id)
+	if active == nil or active.surface == nil or (not active.surface.valid) then
+		return nil
+	end
+
+	local entity_def = get_layout_entity_definition(active, entity_id)
+	if entity_def == nil or type(entity_def.position) ~= "table" then
+		return nil
+	end
+
+	local entities = active.surface.find_entities_filtered{
+		position = entity_def.position,
+		radius = 1.0,
+	}
+	if type(entities) ~= "table" then
+		return nil
+	end
+
+	for _, entity in ipairs(entities) do
+		if entity and entity.valid and entity.name ~= nil and string.find(entity.name, "%-power$", 1) == nil and M.base_powered_name(entity.name) == entity_def.name then
+			return entity
+		end
+	end
+	return nil
+end
+
+local function resolve_current_entity(active, entity_id)
+	local entity = resolve_entity_from_main_mod_storage(active, entity_id)
+	if entity ~= nil then
+		return entity
+	end
+	return resolve_entity_from_surface(active, entity_id)
+end
+
 function M.get_referenced_entities(active, reference_name)
 	local entity_ids = resolve_reference_entity_ids(active, reference_name)
 	local entities = {}
 	local function append_entity(entity_id)
 		local entity = active.placed_entities[entity_id]
+		if entity ~= nil and (not entity.valid) then
+			entity = resolve_current_entity(active, entity_id)
+			active.placed_entities[entity_id] = entity
+		elseif entity == nil then
+			entity = resolve_current_entity(active, entity_id)
+			active.placed_entities[entity_id] = entity
+		end
 		if entity ~= nil then
 			entities[#entities + 1] = entity
 		end
@@ -419,6 +596,48 @@ function M.aggregate_inventory_fingerprint(inventories)
 		end
 	end
 	return combined
+end
+
+local function build_name_filter_lookup(item_names)
+	if type(item_names) ~= "table" then
+		return nil
+	end
+	local lookup = {}
+	for _, item_name in pairs(item_names) do
+		if type(item_name) == "string" and item_name ~= "" then
+			lookup[item_name] = true
+		end
+	end
+	if next(lookup) == nil then
+		return nil
+	end
+	return lookup
+end
+
+function M.aggregate_ground_item_contents(surface, area, item_names)
+	local totals = {}
+	if not (surface and surface.valid) then
+		return totals
+	end
+
+	local query = {name = "item-on-ground"}
+	if type(area) == "table" then
+		query.area = area
+	end
+
+	local name_filter = build_name_filter_lookup(item_names)
+	local entities = surface.find_entities_filtered(query)
+	for _, entity in pairs(entities or {}) do
+		if entity and entity.valid and entity.stack and entity.stack.valid_for_read then
+			local stack = entity.stack
+			local item_name = stack.name
+			if name_filter == nil or name_filter[item_name] then
+				totals[item_name] = (totals[item_name] or 0) + (stack.count or 0)
+			end
+		end
+	end
+
+	return totals
 end
 
 local function apply_fill_inventory_action(active, action)
@@ -493,6 +712,131 @@ local function apply_set_surface_daylight_action(active, action)
 	local mode = action.mode or "full-day"
 	set_surface_daylight(active.surface, mode)
 	log(string.format("[PBE-HARNESS] daylight mode set to %s", tostring(mode)))
+end
+
+local function collect_target_references(action)
+	local refs = {}
+	if type(action.target_ref) == "string" and action.target_ref ~= "" then
+		refs[#refs + 1] = action.target_ref
+	end
+	if type(action.target_refs) == "table" then
+		for _, ref in pairs(action.target_refs) do
+			if type(ref) == "string" and ref ~= "" then
+				refs[#refs + 1] = ref
+			end
+		end
+	end
+	return refs
+end
+
+local function order_deconstruction_for_entity(entity)
+	if not (entity and entity.valid) then
+		return false
+	end
+	local ok = pcall(function()
+		entity.order_deconstruction(entity.force)
+	end)
+	return ok == true
+end
+
+local function cancel_deconstruction_for_entity(entity)
+	if not (entity and entity.valid) then
+		return false
+	end
+	local ok = pcall(function()
+		entity.cancel_deconstruction(entity.force)
+	end)
+	if ok then
+		return true
+	end
+	ok = pcall(function()
+		entity.cancel_deconstruction()
+	end)
+	return ok == true
+end
+
+local function align_upgrade_target_to_entity(entity, target_name)
+	if type(target_name) ~= "string" or target_name == "" then
+		return nil
+	end
+	if is_unpowered_name(entity.name) then
+		if is_unpowered_name(target_name) then
+			return target_name
+		end
+		local unpowered_target = "unpowered-" .. target_name
+		if prototypes.entity[unpowered_target] ~= nil then
+			return unpowered_target
+		end
+		return target_name
+	end
+	return M.base_powered_name(target_name)
+end
+
+local function order_upgrade_for_entity(entity, explicit_target_name)
+	if not (entity and entity.valid) then
+		return false
+	end
+
+	local target_name = align_upgrade_target_to_entity(entity, explicit_target_name)
+	if target_name == nil then
+		local next_upgrade = entity.prototype and entity.prototype.next_upgrade or nil
+		if next_upgrade and next_upgrade.valid and next_upgrade.name ~= nil then
+			target_name = next_upgrade.name
+		end
+	end
+
+	if target_name ~= nil then
+		local target_prototype = prototypes.entity[target_name]
+		if target_prototype ~= nil then
+			local ok = pcall(function()
+				entity.order_upgrade{force = entity.force, target = target_prototype}
+			end)
+			if ok then
+				return true
+			end
+		end
+	end
+
+	local ok = pcall(function()
+		entity.order_upgrade{force = entity.force}
+	end)
+	return ok == true
+end
+
+local function apply_order_deconstruction_action(active, action)
+	for _, reference_name in pairs(collect_target_references(action)) do
+		for _, entity in ipairs(M.get_referenced_entities(active, reference_name)) do
+			order_deconstruction_for_entity(entity)
+		end
+	end
+end
+
+local function apply_cancel_deconstruction_action(active, action)
+	for _, reference_name in pairs(collect_target_references(action)) do
+		for _, entity in ipairs(M.get_referenced_entities(active, reference_name)) do
+			cancel_deconstruction_for_entity(entity)
+		end
+	end
+end
+
+local function apply_order_upgrade_action(active, action)
+	if type(action.orders) == "table" then
+		for _, order in pairs(action.orders) do
+			local reference_name = order.target_ref or order.ref
+			if type(reference_name) == "string" and reference_name ~= "" then
+				for _, entity in ipairs(M.get_referenced_entities(active, reference_name)) do
+					order_upgrade_for_entity(entity, order.target_name)
+				end
+			end
+		end
+		return
+	end
+
+	for _, reference_name in pairs(collect_target_references(action)) do
+		for _, entity in ipairs(M.get_referenced_entities(active, reference_name)) do
+			order_upgrade_for_entity(entity, action.target_name)
+		end
+	end
 end
 
 local function apply_insert_stateful_power_armor_action(active, action)
@@ -576,6 +920,12 @@ function M.apply_action(active, action, call_main_mod)
 		apply_fuel_burner_inserters_action(active, action)
 	elseif action.type == "set_surface_daylight" then
 		apply_set_surface_daylight_action(active, action)
+	elseif action.type == "order_deconstruction" then
+		apply_order_deconstruction_action(active, action)
+	elseif action.type == "cancel_deconstruction" then
+		apply_cancel_deconstruction_action(active, action)
+	elseif action.type == "order_upgrade" then
+		apply_order_upgrade_action(active, action)
 	elseif action.type == "insert_stateful_power_armor" then
 		apply_insert_stateful_power_armor_action(active, action)
 	elseif action.type == "run_full_scan" then
