@@ -13,7 +13,7 @@ local resistances_immune = {
 }
 
 local um = settings.startup["powered-belts-usage-multiplier"].value
-local num_levels = 5 --settings.startup["powered-belts-num-upgrades"].value
+local num_levels = settings.startup["powered-belts-num-upgrades"].value
 local reduction = settings.startup["powered-belts-upgrade-reduction"].value
 local usage_name = tostring(settings.startup["powered-belts-usage-multiplier"].value):gsub("%.", "_")
 local upgrade_name = tostring(settings.startup["powered-belts-upgrade-reduction"].value):gsub("%.", "_")
@@ -74,14 +74,31 @@ local function format_kw(value)
 	return string.format("%.2f", value)
 end
 
+local function build_power_usage_tooltip(base_energy)
+	if num_levels == 0 then
+		return {"powered-belts-tooltip.power-usage-plain", format_kw(base_energy)}
+	end
+	if num_levels == 1 then
+		local level_1_energy = base_energy * tech_factor
+		return {"powered-belts-tooltip.power-usage-l0-l1", format_kw(base_energy), format_kw(level_1_energy)}
+	end
+	local min_energy = base_energy * (tech_factor ^ num_levels)
+	return {
+		"powered-belts-tooltip.power-usage-formula",
+		format_kw(base_energy),
+		string.format("%.2f", tech_factor),
+		tostring(num_levels),
+		format_kw(min_energy)
+	}
+end
+
 local function process_belt_type(raw_key, mult)
 	for _, v in pairs(data.raw[raw_key] or {}) do
 		if not string.match(v.name, "^unpowered%-") then
 			local e = 160 * v.speed * um * (mult or underground_belt_mult(v))
-			local min_e = e * (tech_factor ^ num_levels)
 			v.custom_tooltip_fields = {{
 				name = {"powered-belts-tooltip.power-usage-name"},
-				value = {"powered-belts-tooltip.power-usage-formula", format_kw(e), string.format("%.2f", tech_factor), tostring(num_levels), format_kw(min_e)}
+				value = build_power_usage_tooltip(e)
 			}}
 			local x = table.deepcopy(v)
 			x.name = "unpowered-" .. x.name

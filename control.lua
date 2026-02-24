@@ -233,6 +233,15 @@ function get_correct_belt_level(force)
 	if storage.player_forces[force_name] and storage.player_forces[force_name]['belt_level'] then
 		belt_level = storage.player_forces[force_name]['belt_level']
 	end
+	belt_level = math.max(0, math.floor(belt_level))
+	local max_level_setting = settings.startup["powered-belts-num-upgrades"]
+	local max_level = 5
+	if max_level_setting ~= nil then
+		max_level = math.max(0, math.floor(max_level_setting.value))
+	end
+	if belt_level > max_level then
+		belt_level = max_level
+	end
 	return belt_level
 end
 

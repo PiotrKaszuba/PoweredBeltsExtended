@@ -34,17 +34,15 @@ data:extend({
         hidden = true,
         order = "a"
     },
-    --[[
     {
         type = "int-setting",
         name = "powered-belts-num-upgrades",
         setting_type = "startup",
         default_value = 5,
-        minimum_value = 5,
-        maximum_value = 5,
+        minimum_value = 0,
+        maximum_value = 10,
         order = "a"
     },
-    --]]
     {
         type = "double-setting",
         name = "powered-belts-upgrade-reduction",

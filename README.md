@@ -57,7 +57,7 @@ This version implements replacement logic that preserves items in a temporary in
 
 ## Technology: Belt Transport Efficiency
 
-Five upgrade levels are added (`efficient-belts-1` to `efficient-belts-5`).
+Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N`, where `N` is startup setting `powered-belts-num-upgrades`).
 
 - Each level reduces belt-related power usage by the configured startup fraction.
 - Reduction stacks multiplicatively.
@@ -71,6 +71,8 @@ Five upgrade levels are added (`efficient-belts-1` to `efficient-belts-5`).
 
 - `powered-belts-usage-multiplier` (default `0.2`)
   Scales all belt power usage globally.
+- `powered-belts-num-upgrades` (default `5`, min `0`, max `10`)
+  Sets how many efficiency upgrade technologies are generated.
 - `powered-belts-upgrade-reduction` (default `0.2`)
   Per-level fractional reduction used by efficiency research.
 
@@ -93,7 +95,7 @@ Five upgrade levels are added (`efficient-belts-1` to `efficient-belts-5`).
 
 ## Known Limitations
 
-- Tooltip power values on item/entity hover are static summaries (base value, per-tech multiplier, max-tech value), not live values at current efficiencytech level.
+- Tooltip power values on item/entity hover are static summaries, not live values at current efficiency tech level.
 - Underground belt power draw is currently based on prototype max distance, not the actually built pair length.
 - When placing an underground belt manually against an existing unpowered endpoint, vanilla underground distance/arrows helper overlay will not appear even if placement is valid.
 - Production statistics for deconstruction will show separate entries for powered and unpowered variants of the same belt entity (built entities are all counted as powered variants).
