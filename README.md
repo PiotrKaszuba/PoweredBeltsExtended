@@ -25,7 +25,7 @@ This includes vanilla and modded prototypes present in the game.
 Helper power entities and unpowered belt variants are localized and hidden from Factoriopedia to reduce UI clutter.
 
 ### Power Usage Scales by Entity
-Power draw is computed from belt speed and entity type, then scaled by startup settings and efficiency research.
+Power draw is computed from belt speed and entity type, then scaled by startup settings and efficiency research. Speed scaling is normalized around yellow belt speed (`0.03125`) and supports an exponent startup setting: `((belt_speed*160)^e) / ((yellow_belt_speed*160)^e)`.
 
 Default type multipliers:
 
@@ -74,6 +74,8 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
 
 - `powered-belts-usage-multiplier` (default `0.2`)
   Scales all belt power usage globally.
+- `powered-belts-speed-exponent` (default `1.0`, min `0.0`, max `3.0`)
+  Controls nonlinear speed-to-power scaling around yellow belt speed (`0.03125`). `1.0` matches previous linear behavior.
 - `powered-belts-efficiency-tech-cost-per-level` (default `50`, min `25`, max `200`)
   Base science cost per efficiency technology level. `25` = `0.5x`, `50` = `1x`, `200` = `4x`.
 - `powered-belts-num-upgrades` (default `5`, min `0`, max `10`)

@@ -17,6 +17,15 @@ data:extend({
     },
     {
         type = "double-setting",
+        name = "powered-belts-speed-exponent",
+        setting_type = "startup",
+        default_value = 1.0,
+        minimum_value = 0.0,
+        maximum_value = 3.0,
+        order = "a"
+    },
+    {
+        type = "double-setting",
         name = "powered-belts-required-energy",
         setting_type = "runtime-global",
         default_value = 500,
