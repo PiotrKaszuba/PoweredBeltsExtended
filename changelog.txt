@@ -7,6 +7,7 @@ Date: 2026.2.25
     - Added startup setting 'powered-belts-speed-exponent' for configurable exponent-based speed scaling of belt power usage.
     - Replaced runtime setting 'powered-belts-required-energy' with 'powered-belts-required-energy-percentage' (0-100, default 50).
     - Belt power on/off now uses the configured percentage of each entity buffer size as the threshold.
+    - Entities now retain planned deconstruction and upgrade states after replacement.
 ---------------------------------------------------------------------------------------------------
 Version: 1.2.1
 Date: 2026.2.22
