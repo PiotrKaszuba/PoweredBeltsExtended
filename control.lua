@@ -1370,14 +1370,21 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	local n_lanes_items = nil
 	local n_lanes_positions = nil
 	local neighbour_idx = nil
-	
-	if neighbour_cond then
+	local replace_neighbour_first = neighbour_cond and entity.belt_to_ground_type == "input"
+
+	if replace_neighbour_first then
 		neighbour_idx = get_entity_idx(n)
 		n_lanes_items, n_lanes_positions = run_for_entity(n, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
 		--n_lanes_items, n_lanes_positions = replace_entity(n, neighbour_idx, false, power_up, underground_len)
 	end
-	
+
 	local new_entity = call_replace(surface, entity_idx, entity_data)
+
+	if neighbour_cond and not replace_neighbour_first then
+		neighbour_idx = get_entity_idx(n)
+		n_lanes_items, n_lanes_positions = run_for_entity(n, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
+	end
+
 	local _, entities_by_surface = get_surface_tables(surface, false)
 	
 	if is_underground then
