@@ -25,7 +25,7 @@ This includes vanilla and modded prototypes present in the game.
 Helper power entities and unpowered belt variants are localized and hidden from Factoriopedia to reduce UI clutter.
 
 ### Power Usage Scales by Entity
-Power draw is computed from belt speed and entity type, then scaled by startup settings and efficiency research. Speed scaling is normalized around yellow belt speed (`0.03125`) and supports an exponent startup setting: `((belt_speed*160)^e) / ((yellow_belt_speed*160)^e)`.
+Power draw is computed from belt speed and entity type, then scaled by startup settings and efficiency research. Speed scaling is normalized around yellow belt speed (`0.03125`) and supports an exponent startup setting: `(belt_speed^e) / (yellow_belt_speed^e)`.
 
 Default type multipliers:
 

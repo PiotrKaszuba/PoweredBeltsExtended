@@ -20,6 +20,10 @@ local usage_name = tostring(settings.startup["powered-belts-usage-multiplier"].v
 local upgrade_name = tostring(settings.startup["powered-belts-upgrade-reduction"].value):gsub("%.", "_")
 local tech_factor = 1 - reduction
 local yellow_belt_speed = 0.03125
+local belt_speed_normalizer = 32
+local yellow_belt_speed_normalized = yellow_belt_speed * belt_speed_normalizer
+local base_power_factor = 5
+local total_power_factor = base_power_factor * um
 
 local belt_type_configs = {
 	{"transport-belt", 1},
@@ -94,16 +98,14 @@ local function build_power_usage_tooltip(base_energy)
 	}
 end
 
-local function speed_scaling(v)
-	local normalized_speed = (v.speed * 160) ^ speed_exponent
-	local normalized_yellow = (yellow_belt_speed * 160) ^ speed_exponent
-	return normalized_speed / normalized_yellow
+local function speed_scaling(speed)
+	return (speed ^ speed_exponent) / (yellow_belt_speed_normalized ^ speed_exponent)
 end
 
 local function process_belt_type(raw_key, mult)
 	for _, v in pairs(data.raw[raw_key] or {}) do
 		if not string.match(v.name, "^unpowered%-") then
-			local e = speed_scaling(v) * um * (mult or underground_belt_mult(v))
+			local e = speed_scaling(v.speed * belt_speed_normalizer) * total_power_factor * (mult or underground_belt_mult(v))
 			v.custom_tooltip_fields = {{
 				name = {"powered-belts-tooltip.power-usage-name"},
 				value = build_power_usage_tooltip(e)
