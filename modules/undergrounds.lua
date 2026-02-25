@@ -556,10 +556,10 @@ function undergrounds.run_for_entity(entity, surface, entity_idx, check_for_neig
 			return nil, nil, nil
 		end
 		local required_energy = power_entity.electric_buffer_size * (utils.get_required_energy_percentage_setting() / 100)
-		if string.match(entity.name, "^unpowered%-%") and (power_entity.energy >= required_energy or powerup_n) then
+		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
 			return undergrounds.replace_entity(entity, surface, entity_idx, check_for_neighbour, true, underground_len, replace_context)
 			
-		elseif (not string.match(entity.name, "^unpowered%-%")) and (power_entity.energy < required_energy or powerdown_n) then
+		elseif (not string.match(entity.name, "^unpowered%-")) and (power_entity.energy < required_energy or powerdown_n) then
 			return undergrounds.replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len, replace_context)
 		end
 	end

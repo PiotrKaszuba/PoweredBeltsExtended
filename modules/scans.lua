@@ -143,7 +143,7 @@ function scans.find_all_power_entities()
 				if valid_entity and (entities_by_surface == nil or entities_by_surface[pos] == nil) then
 					game.print('[PBE] Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos)
 					
-					if entities_to_power[pos] ~= nil then
+					if entities_to_power[pos] ~= nil then -- entities_to_power won't be nil because valid_entity check as when setting entities_to_power
 						game.print("[PBE] Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos].name)
 						local _, entities_by_surface_new = utils.get_surface_tables(surface, true)
 						entities_by_surface_new[pos] = entities_to_power[pos]
