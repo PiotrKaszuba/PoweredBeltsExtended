@@ -1346,11 +1346,11 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	local planner_state = capture_entity_planner_state(entity)
 	local entity_data = {surface = entity.surface, name = entity.name, position = entity.position, force = entity.force, direction = entity.direction}
 	local is_underground = entity.type == "underground-belt"
-	local n = nil
+	local neighbour_entity = nil
 	local lanes_items = nil
 	local lanes_positions = nil
 	if is_underground then
-		n = entity.neighbours
+		neighbour_entity = entity.neighbours
 		entity_data.belt_to_ground_type = entity.belt_to_ground_type
 		if not replace_context.disable_item_transfer then
 			lanes_items, lanes_positions = check_and_clear_lanes(entity, underground_len, replace_context)
@@ -1365,25 +1365,31 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	end
 	entity_data.new_name = new_name
 	
-	local neighbour_cond = check_for_neighbour and n ~= nil
+	local neighbour_cond = check_for_neighbour and neighbour_entity ~= nil
 	
 	local n_lanes_items = nil
 	local n_lanes_positions = nil
 	local neighbour_idx = nil
-	
 	if neighbour_cond then
-		neighbour_idx = get_entity_idx(n)
-		n_lanes_items, n_lanes_positions = run_for_entity(n, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
-		--n_lanes_items, n_lanes_positions = replace_entity(n, neighbour_idx, false, power_up, underground_len)
+		neighbour_idx = get_entity_idx(neighbour_entity)
 	end
-	
+	local replace_neighbour_first = neighbour_cond and entity.belt_to_ground_type == "input"
+
+	if replace_neighbour_first then
+		n_lanes_items, n_lanes_positions, neighbour_entity = run_for_entity(neighbour_entity, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
+	end
+
 	local new_entity = call_replace(surface, entity_idx, entity_data)
+
+	if neighbour_cond and not replace_neighbour_first and neighbour_entity ~= nil and neighbour_entity.valid then
+		n_lanes_items, n_lanes_positions, neighbour_entity = run_for_entity(neighbour_entity, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
+	end
+
 	local _, entities_by_surface = get_surface_tables(surface, false)
 	
 	if is_underground then
 		if (not replace_context.disable_item_transfer) and neighbour_cond then
-			local neighbour_entity = nil
-			if entities_by_surface ~= nil then
+			if (neighbour_entity == nil or not neighbour_entity.valid) and entities_by_surface ~= nil then
 				neighbour_entity = entities_by_surface[neighbour_idx]
 			end
 			check_lanes(new_entity, neighbour_entity, lanes_items, n_lanes_items)
@@ -1413,7 +1419,7 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 	if own_replace_context and replace_context.temp_inventory ~= nil and replace_context.temp_inventory.valid then
 		replace_context.temp_inventory.destroy()
 	end
-	return lanes_items, lanes_positions
+	return lanes_items, lanes_positions, new_entity
 	
 
 end
@@ -1425,7 +1431,7 @@ function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underg
 		check_and_replace_power_entity(entity, power_entities_by_surface and power_entities_by_surface[entity_idx] or nil)
 		local power_entity = power_entities_by_surface and power_entities_by_surface[entity_idx] or nil
 		if power_entity == nil or (not power_entity.valid) then
-			return nil, nil
+			return nil, nil, nil
 		end
 		local required_energy = power_entity.electric_buffer_size * (get_required_energy_percentage_setting() / 100)
 		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
@@ -1435,7 +1441,7 @@ function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underg
 			return replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len, replace_context)
 		end
 	end
-	return nil, nil
+	return nil, nil, nil
 end
 
 local function push_snapshot_detail(collection, value, max_entries)
