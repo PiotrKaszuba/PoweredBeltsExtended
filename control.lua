@@ -741,15 +741,22 @@ local function underground_item_transfer_disabled(mode)
 	return normalize_underground_transfer_mode(effective_mode) == "disabled"
 end
 
-local function get_required_energy_setting()
-	if storage and storage.test_overrides and type(storage.test_overrides.required_energy) == "number" then
-		return storage.test_overrides.required_energy
+local function normalize_required_energy_percentage(value)
+	if type(value) ~= "number" then
+		return 50
 	end
-	local setting = settings.global["powered-belts-required-energy"]
+	return math.min(100, math.max(0, value))
+end
+
+local function get_required_energy_percentage_setting()
+	if storage and storage.test_overrides and type(storage.test_overrides.required_energy_percentage) == "number" then
+		return normalize_required_energy_percentage(storage.test_overrides.required_energy_percentage)
+	end
+	local setting = settings.global["powered-belts-required-energy-percentage"]
 	if setting ~= nil then
-		return setting.value
+		return normalize_required_energy_percentage(setting.value)
 	end
-	return 500
+	return 50
 end
 
 local function get_operations_per_tick_setting()
@@ -1420,7 +1427,7 @@ function run_for_entity(entity, surface, entity_idx, check_for_neighbour, underg
 		if power_entity == nil or (not power_entity.valid) then
 			return nil, nil
 		end
-		local required_energy = math.min(get_required_energy_setting(), power_entity.electric_buffer_size * 0.75)
+		local required_energy = power_entity.electric_buffer_size * (get_required_energy_percentage_setting() / 100)
 		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
 			return replace_entity(entity, surface, entity_idx, check_for_neighbour, true, underground_len, replace_context)
 			
@@ -1591,7 +1598,7 @@ function get_state_snapshot(surface_index)
 	local snapshot = {
 		tick = game.tick,
 		underground_item_transfer_mode = get_effective_underground_transfer_mode(),
-		required_energy_setting = get_required_energy_setting(),
+		required_energy_percentage_setting = get_required_energy_percentage_setting(),
 		operations_per_tick_setting = get_operations_per_tick_setting(),
 		surfaces = {},
 		totals = {
@@ -1641,8 +1648,8 @@ function set_test_overrides(overrides)
 	if overrides.underground_item_transfer_mode ~= nil then
 		sanitized.underground_item_transfer_mode = normalize_underground_transfer_mode(overrides.underground_item_transfer_mode)
 	end
-	if type(overrides.required_energy) == "number" then
-		sanitized.required_energy = math.max(0, overrides.required_energy)
+	if type(overrides.required_energy_percentage) == "number" then
+		sanitized.required_energy_percentage = normalize_required_energy_percentage(overrides.required_energy_percentage)
 	end
 	if type(overrides.operations_per_tick) == "number" then
 		sanitized.operations_per_tick = math.max(1, math.floor(overrides.operations_per_tick))

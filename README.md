@@ -40,8 +40,8 @@ Underground belt power is calculated from the pair’s maximum segment length, p
 ### On/Off Behavior During Brownouts
 Belts are switched between powered and unpowered variants based on local stored energy.
 
-- If energy falls below threshold, the entity is powered down.
-- When energy recovers, it powers back up.
+- If energy falls below the configured buffer-percentage threshold, the entity is powered down.
+- When energy recovers to that threshold, it powers back up.
 
 Note: behavior is threshold-based (on/off), not gradual speed throttling.
 
@@ -87,6 +87,8 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
 
 - `powered-belts-operations-per-tick` (default `16`)
   How many belt power entities are processed each tick.
+- `powered-belts-required-energy-percentage` (default `50`, min `0`, max `100`)
+  Percentage of each entity energy buffer that must be available for it to stay powered.
 
 
 ---
