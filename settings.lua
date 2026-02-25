@@ -25,11 +25,12 @@ data:extend({
         order = "a"
     },
     {
-        type = "double-setting",
-        name = "powered-belts-required-energy",
+        type = "int-setting",
+        name = "powered-belts-required-energy-percentage",
         setting_type = "runtime-global",
-        default_value = 500,
+        default_value = 50,
         minimum_value = 0,
+        maximum_value = 100,
         hidden = true,
         order = "a"
     },

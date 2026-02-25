@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.2.3
+Date: 2026.2.25
+  Changes:
+    - Replaced runtime setting 'powered-belts-required-energy' with 'powered-belts-required-energy-percentage' (0-100, default 50).
+    - Belt power on/off now uses the configured percentage of each entity buffer size as the threshold.
+
+---------------------------------------------------------------------------------------------------
 Version: 1.2.2
 Date: 2026.2.24
   Changes:
