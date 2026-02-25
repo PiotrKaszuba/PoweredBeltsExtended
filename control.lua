@@ -251,8 +251,6 @@ function extract_number_from_string(str)
 end
 
 function tech_check(event)
-	--game.print(event.research.name)
-	--game.print(event.research.level)
 	if string.match(event.research.name, "efficient%-belts%-") then
 		local force_name = event.research.force.name
 		
@@ -461,7 +459,6 @@ function find_all_entities_to_power_at_position(surface, position, radius)
 	for k,v in pairs(entities) do
 		if (not string.endswith(v.name, '-power')) and belt_entity_types[v.type] then
 			entities_to_power[get_entity_idx(v)] = v
-			--game.print("ent: " .. get_entity_idx(v))
 		end
 	end
 	return entities_to_power
@@ -483,7 +480,7 @@ function init_entity(entity)
 end
 
 function find_all_entities_powered()
-	game.print("Checking entities to be powered..")
+	game.print("[PBE] Checking all entities to be powered..")
 
 	local num_wrongly_present_and_valid = 0
 	local num_wrongly_present = 0
@@ -541,17 +538,16 @@ function find_all_entities_powered()
 		cleanup_empty_surface_tables(surface_key)
 	end
 
-	if num_entity_invalid > 0 then game.print("Warning: num entity invalid: " .. num_entity_invalid) end
-	--game.print("Num nil: " .. num_nil)
-	if num_wrongly_present > 0 then game.print("Warning: num wrongly present (invalid): " .. num_wrongly_present) end
-	if num_wrongly_present_and_valid > 0 then game.print("Warning: num wrongly present and valid: " .. num_wrongly_present_and_valid) end
-	if num_stale_entries > 0 then game.print("Warning: num stale entity-table entries removed: " .. num_stale_entries) end
-	game.print("PBE_CheckPowerEntities command repaired: " .. num_init .. " entities.")
+	if num_entity_invalid > 0 then game.print("[PBE] Warning: num entity invalid: " .. num_entity_invalid) end
+	if num_wrongly_present > 0 then game.print("[PBE] Warning: num wrongly present (invalid): " .. num_wrongly_present) end
+	if num_wrongly_present_and_valid > 0 then game.print("[PBE] Warning: num wrongly present and valid: " .. num_wrongly_present_and_valid) end
+	if num_stale_entries > 0 then game.print("[PBE] Warning: num stale entity-table entries removed: " .. num_stale_entries) end
+	game.print("[PBE] PBE_CheckPowerEntities command repaired: " .. num_init .. " entities.")
 end
 
 function find_all_power_entities()
 	find_all_entities_powered()
-	game.print("Checking power entities..")
+	game.print("[PBE] Checking all power entities..")
 	local num_destroyed_entities = 0
 	local num_remapped_power_entries = 0
 	local num_removed_invalid_power_entries = 0
@@ -598,7 +594,7 @@ function find_all_power_entities()
 				local pos = get_entity_idx(v)
 				local valid_entity = true
 				if power_entities_temp[pos] ~= nil then
-					game.print('Warning: double power entity (destroying it now) at position: ' .. pos)
+					game.print('[PBE] Warning: double power entity (destroying it now) at position: ' .. pos)
 					v.destroy()
 					valid_entity = false
 					num_destroyed_entities = num_destroyed_entities + 1
@@ -608,7 +604,6 @@ function find_all_power_entities()
 				if valid_entity then
 					entities_to_power = find_all_entities_to_power_at_position(surface, v.position, 1)
 					if entities_to_power[pos] == nil then
-						--game.print("Warning: ... entity to be powered DOES NOT exist the position of power entity (removing power entity now), position: " .. pos)
 						v.destroy()
 						local entities_by_surface = storage.entities[surface_key]
 						local power_entities_by_surface = storage.power_entities[surface_key]
@@ -621,14 +616,14 @@ function find_all_power_entities()
 				local entities_by_surface = storage.entities[surface_key]
 				local power_entities_by_surface = storage.power_entities[surface_key]
 				if valid_entity and (entities_by_surface == nil or entities_by_surface[pos] == nil) then
-					game.print('Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos)
+					game.print('[PBE] Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos)
 					
 					if entities_to_power[pos] ~= nil then -- entities_to_power won't be nil because valid_entity check as when setting entities_to_power
-						game.print("Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos].name)
+						game.print("[PBE] Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos].name)
 						local _, entities_by_surface_new = get_surface_tables(surface, true)
 						entities_by_surface_new[pos] = entities_to_power[pos]
 					else
-						game.print("Warning: ... AND entity to be powered DOES NOT exist at this position (removing power entity now)!")
+						game.print("[PBE] Warning: ... AND entity to be powered DOES NOT exist at this position (removing power entity now)!")
 						v.destroy()
 						if power_entities_by_surface ~= nil then power_entities_by_surface[pos] = nil end
 						valid_entity = false
@@ -637,7 +632,7 @@ function find_all_power_entities()
 					
 				
 				elseif valid_entity and (power_entities_by_surface == nil or power_entities_by_surface[pos] ~= v) then
-					game.print('Warning: this power entity does not have entry in power entities table, position: (assigning it now)' .. pos)
+					game.print('[PBE] Warning: this power entity does not have entry in power entities table, position: (assigning it now)' .. pos)
 					local _, _, power_entities_by_surface_new = get_surface_tables(surface, true)
 					power_entities_by_surface_new[pos] = v
 				end
@@ -648,9 +643,9 @@ function find_all_power_entities()
 		cleanup_empty_surface_tables(surface_key)
 	end
 
-	if num_removed_invalid_power_entries > 0 then game.print("Warning: removed invalid power-table entries: " .. num_removed_invalid_power_entries) end
-	if num_remapped_power_entries > 0 then game.print("Warning: remapped misplaced power-table entries: " .. num_remapped_power_entries) end
-	game.print("PBE_CheckPowerEntities command cleaned up: " .. num_destroyed_entities .. " power entities.")
+	if num_removed_invalid_power_entries > 0 then game.print("[PBE] Warning: removed invalid power-table entries: " .. num_removed_invalid_power_entries) end
+	if num_remapped_power_entries > 0 then game.print("[PBE] Warning: remapped misplaced power-table entries: " .. num_remapped_power_entries) end
+	game.print("[PBE] PBE_CheckPowerEntities command cleaned up: " .. num_destroyed_entities .. " power entities.")
 
 end
 
@@ -919,7 +914,7 @@ function position_capturing_algorithm(lane, max_check, replace_context)
 			end
 			removed = capture_line_item(lane, line_item, current_check, items, positions, replace_context)
 			if removed == 0 then
-				game.print("Warning: did not remove an item!")
+				game.print("[PBE] Warning: did not remove an item!")
 			end
 		else
 			current_check = current_check + storage.belt_check_interval
@@ -954,14 +949,14 @@ function position_capturing_algorithm(lane, max_check, replace_context)
 			end
 			removed = capture_line_item(lane, line_item, current_check, items, positions, replace_context)
 			if removed == 0 then
-				game.print("Warning: did not remove an item!")
+				game.print("[PBE] Warning: did not remove an item!")
 			end
 		
 		end
 	end
 	
 	if lane.valid and #lane ~= 0 then
-		game.print("Warning: did not remove all items; left (clearing now): " .. #lane)
+		game.print("[PBE] Warning: did not remove all items; left (clearing now): " .. #lane)
 		lane.clear()
 	end
 	
@@ -983,11 +978,6 @@ function check_and_clear_lanes(underground, underground_len, replace_context)
 	
     for lane_idx = 1, 2 do
    		local lane = underground.get_transport_line(lane_idx)
-		--[[
-		if not (lane and lane.valid) then
-			game.print("Warning: invalid line")
-		end
-		--]]
 		if lane and lane.valid then
 			local max_check = lane_max_check(underground, lane_idx, underground_len)
 			local items, positions = check_and_clear_lane(lane, max_check, replace_context)
@@ -1000,11 +990,6 @@ function check_and_clear_lanes(underground, underground_len, replace_context)
 	if underground.belt_to_ground_type == "input" or n == nil then
 		for lane_idx = 3, 4 do
 			local lane = underground.get_transport_line(lane_idx)
-			--[[
-			if not (lane and lane.valid) then
-				game.print("Warning: invalid line")
-			end
-			--]]
 			if lane and lane.valid then
 				local max_check = lane_max_check(underground, lane_idx, underground_len)
 				local items, positions = check_and_clear_lane(lane, max_check, replace_context)
@@ -1039,11 +1024,6 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 	if not (lane and lane.valid) then
 		return
 	end
-	--[[
-	if not (lane and lane.valid) then
-		game.print("Warning: invalid line")
-	end
-	--]]
 	local current_check = 0.0
 	if positions and #positions > 0 and obey_positions then
 		current_check = positions[starting_item_idx] - (storage.belt_interval * 2)
@@ -1088,28 +1068,8 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 		end
 	end
 	
-	--[[
-	if inserted < #items then
-		current_check = 0.0
-		can_insert = lane.can_insert_at(current_check)
-		item = items[starting_item_idx - inserted]
-		if can_insert then
-			lane.insert_at(current_check, item)
-			inserted = inserted + 1
-		end
-	end
-	
-	
-	if obey_positions and inserted < #items then
-		lane.clear()
-		game.print("Warning: inserting items didn't succeed at the first try. Inserted " .. inserted .. ", left to insert: " .. #items - inserted .. ", max_check " .. max_check .. ",ulen " .. underground_len .. ", curr_check " .. current_check) 
-		game.print("Warning: now trying to skip the positions of items")
-		fill_lane(underground, lane_idx, items, positions, starting_item_idx, false, underground_len)
-	end
-	--]]
 	local c = 0
 	if inserted < #items then
-		-- game.print("Warning: unable to insert items. Inserted " .. inserted .. ", left to insert: " .. #items - inserted .. ", max_check " .. max_check .. ",ulen " .. underground_len .. ", curr_check " .. current_check) 
 		
 		local counts = {}
 		local grouped_spills = {}
@@ -1139,7 +1099,7 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 		
 		add_count(storage.spilled_items, '_total', c)
 		
-		game.print("Spilled " .. c .. " items at  x=" .. underground.position.x .. ", y=" .. underground.position.y .. ": ")
+		game.print("[PBE] Spilled " .. c .. " items at  x=" .. underground.position.x .. ", y=" .. underground.position.y .. ": ")
 		for k, v in pairs(grouped_spills) do
 			underground.surface.spill_item_stack{
 				position = underground.position,
@@ -1149,7 +1109,7 @@ function fill_lane(underground, lane_idx, items, positions, starting_item_idx, o
 				allow_belts = false
 			}
 		end
-		game.print(collection_to_string(counts))
+		game.print("[PBE] " .. collection_to_string(counts))
 	end
 	add_count(storage.saved_items, '_total', inserted + c)
 end
@@ -1202,11 +1162,7 @@ function extra_and_saved_items_with_created_state(underground, saved_items, save
 		extra_items_per_lane[lane_identifier] = {}
 		num_extra_items_per_lane[lane_identifier] = 0
 		local lane = underground.get_transport_line(lane_idx)
-		--[[
-		if not (lane and lane.valid) then
-			game.print("Warning: invalid line")
-		end
-		--]]
+
 		if lane and lane.valid then
 			for _, detailed_item in pairs(lane.get_detailed_contents()) do
 				local line_item = detailed_item.stack
@@ -1284,7 +1240,7 @@ function check_lanes(underground, neighbour, lanes_items, lanes_items_n)
 	end
 	
 	if num_extra_items > 0 then
-		game.print("Warning: extra items present after creation! num_extra_items: " .. num_extra_items)
+		game.print("[PBE] Warning: extra items present after creation! num_extra_items: " .. num_extra_items)
 
 	end
 	
@@ -1407,7 +1363,6 @@ function replace_entity(entity, surface, entity_idx, check_for_neighbour, power_
 				
 			end
 			
-		--elseif check_for_neighbour then
 		elseif (not replace_context.disable_item_transfer) and check_for_neighbour then
 			fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, replace_context)
 		

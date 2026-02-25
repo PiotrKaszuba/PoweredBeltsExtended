@@ -9,6 +9,7 @@ Date: 2026.2.25
     - Belt power on/off now uses the configured percentage of each entity buffer size as the threshold.
     - Entities now retain planned deconstruction and upgrade states after replacement.
     - Underground pair replacement now always replaces the output endpoint first and captures the neighbour before swap so item transfer stays stable.
+    - Logging to chat now uses '[PBE]' prefix.
 ---------------------------------------------------------------------------------------------------
 Version: 1.2.1
 Date: 2026.2.22
