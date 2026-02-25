@@ -64,17 +64,17 @@ local function make_transfer_scenario(base)
 
 	if base.outage then
 		scenario.actions[#scenario.actions + 1] = {
-			tick = base.outage.off_tick or 80,
+			tick = base.outage.off_tick or 220,
 			type = "set_surface_daylight",
 			mode = "midnight",
 		}
 		scenario.actions[#scenario.actions + 1] = {
-			tick = base.outage.on_tick or 240,
+			tick = base.outage.on_tick or 380,
 			type = "set_surface_daylight",
 			mode = "full-day",
 		}
 		scenario.checkpoints[#scenario.checkpoints + 1] = {
-			tick = base.outage.assert_tick or 180,
+			tick = base.outage.assert_tick or 320,
 			assertions = {
 				{
 					type = "sink_count_less_than",
@@ -107,7 +107,7 @@ local function make_planner_state_outage_scenario(base)
 	for key, value in pairs(base.mark_action or {}) do
 		mark_action[key] = value
 	end
-	mark_action.tick = base.mark_tick or mark_action.tick or 120
+	mark_action.tick = base.mark_tick or mark_action.tick or 220
 
 	local function build_assertion()
 		local assertion = {
@@ -121,11 +121,11 @@ local function make_planner_state_outage_scenario(base)
 	end
 
 	local max_tick = base.max_tick or 1800
-	local off_tick = base.off_tick or 160
-	local on_tick = base.on_tick or 420
-	local pre_outage_check_tick = base.pre_outage_check_tick or 140
-	local outage_check_tick = base.outage_check_tick or 300
-	local post_restore_check_tick = base.post_restore_check_tick or 520
+	local off_tick = base.off_tick or 260
+	local on_tick = base.on_tick or 500
+	local pre_outage_check_tick = base.pre_outage_check_tick or 240
+	local outage_check_tick = base.outage_check_tick or 380
+	local post_restore_check_tick = base.post_restore_check_tick or 600
 	local transfer_stacks = base.transfer_stacks or {
 		{name = "iron-ore", count = 20},
 	}
@@ -243,9 +243,6 @@ local function default_scenarios()
 			},
 			max_tick = 2200,
 			outage = {
-				off_tick = 120,
-				on_tick = 420,
-				assert_tick = 300,
 				max_sink_during_outage = 58,
 			},
 		},
@@ -258,9 +255,6 @@ local function default_scenarios()
 			},
 			max_tick = 2200,
 			outage = {
-				off_tick = 120,
-				on_tick = 420,
-				assert_tick = 300,
 				max_sink_during_outage = 58,
 			},
 		},
@@ -280,9 +274,9 @@ local function default_scenarios()
 			},
 			max_tick = 3000,
 			outage = {
-				off_tick = 320,
-				on_tick = 520,
-				assert_tick = 450,
+				off_tick = 400,
+				on_tick = 600,
+				assert_tick = 520,
 				max_sink_during_outage = 280,
 			},
 			extra_checkpoints = {
@@ -308,9 +302,9 @@ local function default_scenarios()
 			},
 			max_tick = 3000,
 			outage = {
-				off_tick = 320,
-				on_tick = 520,
-				assert_tick = 450,
+				off_tick = 400,
+				on_tick = 600,
+				assert_tick = 520,
 				max_sink_during_outage = 280,
 			},
 		},
@@ -328,9 +322,9 @@ local function default_scenarios()
 			},
 			max_tick = 3000,
 			outage = {
-				off_tick = 320,
-				on_tick = 520,
-				assert_tick = 450,
+				off_tick = 400,
+				on_tick = 600,
+				assert_tick = 520,
 				max_sink_during_outage = 280,
 			},
 		},
@@ -344,9 +338,9 @@ local function default_scenarios()
 			compare_stack_fingerprints = true,
 			max_tick = 2200,
 			outage = {
-				off_tick = 180,
-				on_tick = 480,
-				assert_tick = 300,
+				off_tick = 200,
+				on_tick = 360,
+				assert_tick = 280,
 				max_sink_during_outage = 1,
 			},
 			extra_actions = {
@@ -373,9 +367,9 @@ local function default_scenarios()
 			compare_stack_fingerprints = true,
 			max_tick = 2200,
 			outage = {
-				off_tick = 180,
-				on_tick = 480,
-				assert_tick = 300,
+				off_tick = 200,
+				on_tick = 360,
+				assert_tick = 280,
 				max_sink_during_outage = 1,
 			},
 			extra_actions = {
@@ -409,9 +403,6 @@ local function default_scenarios()
 			},
 			max_tick = 2200,
 			outage = {
-				off_tick = 120,
-				on_tick = 420,
-				assert_tick = 300,
 				max_sink_during_outage = 60,
 			},
 			extra_checkpoints = {
@@ -434,7 +425,7 @@ local function default_scenarios()
 			},
 			extra_actions = {
 				{
-					tick = 560,
+					tick = 640,
 					type = "cancel_deconstruction",
 					target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
 				},
