@@ -452,6 +452,65 @@ local function default_scenarios()
 				},
 			},
 		},
+
+		{
+			id = "planner_blueprint_build_and_force_build",
+			layout_id = "underground_splitter_line",
+			inserter_name = "burner-inserter",
+			max_tick = 420,
+			settings_overrides = {
+				underground_item_transfer_mode = "name-only",
+				operations_per_tick = 128,
+			},
+			actions = {
+				{tick = 0, type = "fuel_burner_inserters", count = 50},
+				{
+					tick = 120,
+					type = "build_blueprint",
+					position = {x = 6.5, y = 2.5},
+					force_build = false,
+				},
+				{
+					tick = 160,
+					type = "build_blueprint",
+					position = {x = 3.5, y = 0.5},
+					force_build = false,
+				},
+				{
+					tick = 200,
+					type = "build_blueprint",
+					position = {x = 9.5, y = 0.5},
+					force_build = true,
+				},
+			},
+			checkpoints = {
+				{
+					tick = 260,
+					assertions = {
+						{
+							type = "blueprint_build_result",
+							expected_ghosts = {
+								{name = "small-electric-pole", position = {x = 6.5, y = 2.5}},
+								{name = "small-electric-pole", position = {x = 9.5, y = 0.5}},
+								{name = "underground-belt", position = {x = 8.5, y = 0.5}},
+								{name = "underground-belt", position = {x = 10.5, y = 0.5}},
+							},
+							expected_missing_ghosts = {
+								{name = "small-electric-pole", position = {x = 3.5, y = 0.5}},
+							},
+							expected_deconstruction_marked = {
+								{name = "transport-belt", position = {x = 9.5, y = 0.5}},
+								{name = "transport-belt", position = {x = 10.5, y = 0.5}},
+								{name = "underground-belt", position = {x = 8.5, y = 0.5}},
+							},
+							expected_not_deconstruction_marked = {
+								{name = "transport-belt", position = {x = 3.5, y = 0.5}},
+							},
+						},
+					},
+				},
+			},
+		},
 		{
 			id = "scan_recovery_smoke",
 			layout_id = "straight_line",

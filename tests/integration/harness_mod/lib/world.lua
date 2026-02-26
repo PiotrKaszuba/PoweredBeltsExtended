@@ -951,6 +951,72 @@ local function apply_insert_stateful_power_armor_action(active, action)
 	end
 end
 
+local function apply_build_blueprint_action(active, action)
+	if not (active.surface and active.surface.valid) then
+		return
+	end
+
+	local player = game and game.get_player and game.get_player(1) or nil
+	if not (player and player.valid) then
+		log("[PBE-HARNESS] build_blueprint skipped: player 1 unavailable")
+		return
+	end
+
+	player.clear_cursor()
+	local cursor = player.cursor_stack
+	if not (cursor and cursor.valid_for_read == false) then
+		pcall(function()
+			cursor.clear()
+		end)
+	end
+
+	local ok_set = pcall(function()
+		cursor.set_stack{name = "blueprint", count = 1}
+	end)
+	if not ok_set or not (cursor and cursor.valid_for_read) then
+		log("[PBE-HARNESS] build_blueprint skipped: failed to create blueprint stack")
+		return
+	end
+
+	local entities = action.entities
+	if type(entities) ~= "table" or #entities == 0 then
+		entities = {
+			{
+				entity_number = 1,
+				name = action.entity_name or "small-electric-pole",
+				position = {x = 0, y = 0},
+			},
+		}
+	end
+
+	local ok_entities, err_entities = pcall(function()
+		cursor.set_blueprint_entities(entities)
+	end)
+	if not ok_entities then
+		log("[PBE-HARNESS] build_blueprint skipped: invalid entities payload: " .. tostring(err_entities))
+		return
+	end
+
+	local ok_build, result_or_error = pcall(function()
+		return cursor.build_blueprint{
+			surface = active.surface,
+			force = game.forces.player,
+			position = action.position,
+			direction = action.direction,
+			force_build = action.force_build == true,
+			skip_fog_of_war = true,
+			by_player = player,
+		}
+	end)
+	if not ok_build then
+		log("[PBE-HARNESS] build_blueprint failed: " .. tostring(result_or_error))
+	end
+
+	if action.clear_cursor ~= false then
+		player.clear_cursor()
+	end
+end
+
 function M.apply_action(active, action, call_main_mod)
 	if action.type == "fill_inventory" then
 		apply_fill_inventory_action(active, action)
@@ -966,6 +1032,8 @@ function M.apply_action(active, action, call_main_mod)
 		apply_order_upgrade_action(active, action)
 	elseif action.type == "insert_stateful_power_armor" then
 		apply_insert_stateful_power_armor_action(active, action)
+	elseif action.type == "build_blueprint" then
+		apply_build_blueprint_action(active, action)
 	elseif action.type == "run_full_scan" then
 		call_main_mod("run_full_scan")
 	elseif action.type == "set_test_overrides" then

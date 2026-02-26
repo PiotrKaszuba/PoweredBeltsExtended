@@ -178,6 +178,106 @@ local function evaluate_upgrade_targets(active, assertion)
 	return true, "Upgrade targets match expected", extra
 end
 
+local function positions_equal(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" then
+		return false
+	end
+	return a.x == b.x and a.y == b.y
+end
+
+local function find_entities_at_position(surface, position)
+	if not (surface and surface.valid and type(position) == "table") then
+		return {}
+	end
+	return surface.find_entities_filtered{position = position, radius = 0.2} or {}
+end
+
+local function evaluate_blueprint_result(active, assertion)
+	local failures = {}
+	local extra = {ghosts = {}, marks = {}}
+
+	for _, expected_ghost in pairs(assertion.expected_ghosts or {}) do
+		local entities = find_entities_at_position(active.surface, expected_ghost.position)
+		local found = false
+		for _, entity in pairs(entities) do
+			if entity and entity.valid and entity.name == "entity-ghost" then
+				local ghost_name = entity.ghost_name
+				extra.ghosts[#extra.ghosts + 1] = {
+					position = entity.position,
+					name = ghost_name,
+				}
+				if ghost_name == expected_ghost.name and positions_equal(entity.position, expected_ghost.position) then
+					found = true
+				end
+			end
+		end
+		if not found then
+			failures[#failures + 1] = string.format(
+				"missing-ghost(%s@%.1f,%.1f)",
+				tostring(expected_ghost.name),
+				expected_ghost.position.x,
+				expected_ghost.position.y
+			)
+		end
+	end
+
+	for _, expected_missing_ghost in pairs(assertion.expected_missing_ghosts or {}) do
+		local entities = find_entities_at_position(active.surface, expected_missing_ghost.position)
+		for _, entity in pairs(entities) do
+			if entity and entity.valid and entity.name == "entity-ghost" and entity.ghost_name == expected_missing_ghost.name then
+				failures[#failures + 1] = string.format(
+					"unexpected-ghost(%s@%.1f,%.1f)",
+					tostring(expected_missing_ghost.name),
+					expected_missing_ghost.position.x,
+					expected_missing_ghost.position.y
+				)
+				break
+			end
+		end
+	end
+
+	local function verify_mark(expect_marked, entries)
+		for _, expected in pairs(entries or {}) do
+			local entities = find_entities_at_position(active.surface, expected.position)
+			local matched = false
+			for _, entity in pairs(entities) do
+				if entity and entity.valid and entity.name ~= "entity-ghost" and (expected.name == nil or entity.name == expected.name) then
+					local marked = false
+					pcall(function()
+						marked = entity.to_be_deconstructed(entity.force) == true
+					end)
+					extra.marks[#extra.marks + 1] = {
+						position = entity.position,
+						name = entity.name,
+						marked = marked,
+					}
+					if marked == expect_marked then
+						matched = true
+					end
+				end
+			end
+			if not matched then
+				local descriptor = expect_marked and "missing-marked" or "unexpected-marked"
+				failures[#failures + 1] = string.format(
+					"%s(%s@%.1f,%.1f)",
+					descriptor,
+					tostring(expected.name or "any"),
+					expected.position.x,
+					expected.position.y
+				)
+			end
+		end
+	end
+
+	verify_mark(true, assertion.expected_deconstruction_marked)
+	verify_mark(false, assertion.expected_not_deconstruction_marked)
+
+	if #failures > 0 then
+		return false, table.concat(failures, ", "), extra
+	end
+	return true, "Blueprint state matches expectations", extra
+end
+
 function M.run(active, checkpoint_tick, assertion, call_main_mod)
 	if assertion.type == "structural_consistency" then
 		local snapshot = call_main_mod("get_state_snapshot", active.surface.index)
@@ -264,6 +364,11 @@ function M.run(active, checkpoint_tick, assertion, call_main_mod)
 			marks = marks_extra,
 			targets = targets_extra,
 		}
+		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
+	end
+
+	if assertion.type == "blueprint_build_result" then
+		local passed, message, extra = evaluate_blueprint_result(active, assertion)
 		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
 	end
 
