@@ -374,9 +374,47 @@ function M.bootstrap_daytime_and_power(surface, area, placed_entities)
 	end
 end
 
-function M.place_layout(layout, surface)
+local function build_placement_order(entities, build_order)
+	if type(entities) ~= "table" then
+		return {}
+	end
+	local ordered = {}
+	for _, entity_def in ipairs(entities) do
+		ordered[#ordered + 1] = {entity_def = entity_def}
+	end
+	if type(build_order) ~= "table" or build_order.mode == nil or build_order.mode == "normal" then
+		return ordered
+	end
+	if build_order.mode == "reversed" then
+		local reversed = {}
+		for i = #ordered, 1, -1 do
+			reversed[#reversed + 1] = ordered[i]
+		end
+		return reversed
+	end
+	if build_order.mode == "random" then
+		local seed = build_order.seed
+		if type(seed) ~= "number" then
+			seed = game and game.tick or #ordered
+		end
+		local state = math.abs(math.floor(seed)) + 1
+		local function next_random(max)
+			state = (1103515245 * state + 12345) % 2147483648
+			return (state % max) + 1
+		end
+		for i = #ordered, 2, -1 do
+			local j = next_random(i)
+			ordered[i], ordered[j] = ordered[j], ordered[i]
+		end
+		return ordered
+	end
+	return ordered
+end
+
+function M.place_layout(layout, surface, build_order)
 	local created = {}
-	for _, entity_def in ipairs(layout.entities or {}) do
+	for _, placement in ipairs(build_placement_order(layout.entities or {}, build_order)) do
+		local entity_def = placement.entity_def
 		local create_params = {
 			name = entity_def.name,
 			position = entity_def.position,

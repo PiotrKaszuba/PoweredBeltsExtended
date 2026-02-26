@@ -20,6 +20,8 @@ class RunConfig:
     powered_belts_enabled: bool = True
     runtime_dirname: str | None = None
     remove_runtime_dir_on_exit: bool = True
+    build_order_mode: str = "normal"
+    build_order_seed: int | None = None
 
 
 @dataclass(frozen=True)
@@ -171,6 +173,16 @@ def stage_runtime(config: RunConfig) -> RuntimePaths:
     harness_source = config.repo_root / "tests" / "integration" / "harness_mod"
     harness_dest = mods_dir / "PBEIntegrationHarness_0.1.0"
     shutil.copytree(harness_source, harness_dest, dirs_exist_ok=False)
+
+    build_order_mode = config.build_order_mode if config.build_order_mode in {"normal", "reversed", "random"} else "normal"
+    build_order_seed = config.build_order_seed if isinstance(config.build_order_seed, int) else None
+    harness_build_order_config = (
+        "local M = {}\n"
+        f"M.default_mode = {json.dumps(build_order_mode)}\n"
+        f"M.default_seed = {json.dumps(build_order_seed)}\n"
+        "return M\n"
+    )
+    (harness_dest / "lib" / "build_order_config.lua").write_text(harness_build_order_config, encoding="utf-8")
 
     mod_entries = [
         {"name": "base", "enabled": True},

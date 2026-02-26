@@ -495,18 +495,10 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	local neighbour_idx = nil
 	if neighbour_cond then
 		neighbour_idx = entities.get_entity_idx(neighbour_entity)
-	end
-	local replace_neighbour_first = neighbour_cond and entity.belt_to_ground_type == "input"
-
-	if replace_neighbour_first then
 		n_lanes_items, n_lanes_positions, neighbour_entity = undergrounds.run_for_entity(neighbour_entity, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
 	end
 
 	local new_entity = undergrounds.call_replace(surface, entity_idx, entity_data)
-
-	if neighbour_cond and not replace_neighbour_first and neighbour_entity ~= nil and neighbour_entity.valid then
-		n_lanes_items, n_lanes_positions, neighbour_entity = undergrounds.run_for_entity(neighbour_entity, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
-	end
 
 	local _, entities_by_surface = utils.get_surface_tables(surface, false)
 	
