@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.2.3
+Date: 2026.2.26
+  Changes:
+    - Hotfix: fixed a bug introduced in 1.2.2 that would remove items from underground belts related to the revert below.
+    - Reverted: Underground pair replacement now always replaces the output endpoint first and captures the neighbour before swap so item transfer stays stable.
+---------------------------------------------------------------------------------------------------
 Version: 1.2.2
 Date: 2026.2.25
   Changes:
