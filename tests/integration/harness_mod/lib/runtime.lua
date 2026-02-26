@@ -2,6 +2,14 @@ local scenarios = require("scenarios")
 local layouts = require("layouts_generated.index")
 local world = require("lib.world")
 local assertions = require("lib.assertions")
+local loaded_build_order_config = nil
+
+do
+	local ok, value = pcall(require, "lib.build_order_config")
+	if ok and type(value) == "table" then
+		loaded_build_order_config = value
+	end
+end
 
 local M = {}
 
@@ -113,7 +121,60 @@ local function ensure_harness_storage()
 	if harness.written_results == nil then
 		harness.written_results = false
 	end
+	if harness.build_order == nil then
+		harness.build_order = {
+			mode = loaded_build_order_config and loaded_build_order_config.default_mode or "normal",
+			seed = loaded_build_order_config and loaded_build_order_config.default_seed or nil,
+		}
+	end
 	return harness
+end
+
+local function normalize_build_order(mode, seed)
+	if mode == nil then
+		mode = "normal"
+	end
+	if type(mode) ~= "string" then
+		return nil, "build_order mode must be a string"
+	end
+	local normalized_mode = string.lower(mode)
+	if normalized_mode == "reverse" then
+		normalized_mode = "reversed"
+	end
+	if normalized_mode ~= "normal" and normalized_mode ~= "reversed" and normalized_mode ~= "random" then
+		return nil, "invalid build_order mode: " .. tostring(mode)
+	end
+
+	local normalized_seed = nil
+	if seed ~= nil then
+		if type(seed) ~= "number" then
+			return nil, "build_order seed must be a number"
+		end
+		normalized_seed = math.floor(seed)
+	end
+
+	if normalized_mode ~= "random" then
+		normalized_seed = nil
+	end
+	return {
+		mode = normalized_mode,
+		seed = normalized_seed,
+	}
+end
+
+local function read_build_order_from_setup_options(setup_options)
+	if type(setup_options) ~= "table" then
+		return nil, nil, false
+	end
+	if type(setup_options.build_order) == "table" then
+		local build_order, err = normalize_build_order(setup_options.build_order.mode, setup_options.build_order.seed)
+		return build_order, err, true
+	end
+	if setup_options.build_order_mode ~= nil or setup_options.build_order_seed ~= nil then
+		local build_order, err = normalize_build_order(setup_options.build_order_mode, setup_options.build_order_seed)
+		return build_order, err, true
+	end
+	return nil, nil, false
 end
 
 local function burner_fuel_count(entity)
@@ -302,6 +363,7 @@ local function summarize_scenario(active)
 		has_any_failed = has_any_failed,
 		failed_count = failed_count,
 		expected_failed_assertions = expected_failed_assertions,
+		build_order = active.build_order,
 		passed = failed_count == expected_failed_assertions,
 		assertions = active.assertion_results,
 	}
@@ -340,7 +402,16 @@ local function start_scenario(scenario, setup_options)
 	apply_scenario_research(scenario, setup_options)
 
 	call_main_mod("set_test_overrides", scenario.settings_overrides or {})
-	local placed_entities = world.place_layout(layout, surface)
+	local build_order = nil
+	local resolved_build_order, resolved_build_order_error = read_build_order_from_setup_options(setup_options)
+	if resolved_build_order_error ~= nil then
+		error(resolved_build_order_error)
+	end
+	build_order = resolved_build_order
+	if build_order == nil then
+		build_order = deep_copy(harness.build_order)
+	end
+	local placed_entities = world.place_layout(layout, surface, build_order)
 	world.bootstrap_daytime_and_power(surface, area, placed_entities)
 	call_main_mod("run_full_scan")
 	local post_scan = call_main_mod("get_state_snapshot", surface.index)
@@ -359,6 +430,7 @@ local function start_scenario(scenario, setup_options)
 		next_action_idx = 1,
 		next_checkpoint_idx = 1,
 		assertion_results = {},
+		build_order = build_order,
 		source_baseline_fingerprint = {},
 		expected_contents = {},
 	}
@@ -501,6 +573,10 @@ local function setup_scenario_state(id, save_name, setup_options)
 	if scenario == nil then
 		return {ok = false, error = "Unknown scenario id: " .. tostring(id)}
 	end
+	local _, build_order_error, has_explicit_build_order = read_build_order_from_setup_options(setup_options)
+	if has_explicit_build_order and build_order_error ~= nil then
+		return {ok = false, error = build_order_error}
+	end
 
 	local harness = ensure_harness_storage()
 	reset_results()
@@ -546,24 +622,58 @@ local function setup_scenario_state(id, save_name, setup_options)
 end
 
 function M.capture_scenario_setup(id, save_name, setup_options)
+	local positional_mode = nil
+	local positional_seed = nil
+	if save_name == "normal" or save_name == "reversed" or save_name == "reverse" or save_name == "random" then
+		positional_mode = save_name
+		save_name = nil
+		if type(setup_options) == "number" then
+			positional_seed = setup_options
+			setup_options = nil
+		end
+	end
 	local options = {
 		keep_active = false,
 		pause = true,
 		save_snapshot = true,
 		researched_technologies = nil,
+		build_order_mode = positional_mode,
+		build_order_seed = positional_seed,
 	}
 	if type(setup_options) == "table" then
 		options.researched_technologies = setup_options.researched_technologies
+		if setup_options.build_order_mode ~= nil then
+			options.build_order_mode = setup_options.build_order_mode
+		end
+		if setup_options.build_order_seed ~= nil then
+			options.build_order_seed = setup_options.build_order_seed
+		end
+		if type(setup_options.build_order) == "table" then
+			options.build_order_mode = setup_options.build_order.mode
+			options.build_order_seed = setup_options.build_order.seed
+		end
 	end
 	return setup_scenario_state(id, save_name, options)
 end
 
 function M.prepare_scenario_setup(id, save_name, setup_options)
+	local positional_mode = nil
+	local positional_seed = nil
+	if save_name == "normal" or save_name == "reversed" or save_name == "reverse" or save_name == "random" then
+		positional_mode = save_name
+		save_name = nil
+		if type(setup_options) == "number" then
+			positional_seed = setup_options
+			setup_options = nil
+		end
+	end
 	local options = {
 		keep_active = true,
 		pause = true,
 		save_snapshot = true,
 		researched_technologies = nil,
+		build_order_mode = positional_mode,
+		build_order_seed = positional_seed,
 	}
 	if type(setup_options) == "table" then
 		if setup_options.save_snapshot == false then
@@ -573,8 +683,33 @@ function M.prepare_scenario_setup(id, save_name, setup_options)
 			options.pause = false
 		end
 		options.researched_technologies = setup_options.researched_technologies
+		if setup_options.build_order_mode ~= nil then
+			options.build_order_mode = setup_options.build_order_mode
+		end
+		if setup_options.build_order_seed ~= nil then
+			options.build_order_seed = setup_options.build_order_seed
+		end
+		if type(setup_options.build_order) == "table" then
+			options.build_order_mode = setup_options.build_order.mode
+			options.build_order_seed = setup_options.build_order.seed
+		end
 	end
 	return setup_scenario_state(id, save_name, options)
+end
+
+function M.set_build_order(mode, seed)
+	local harness = ensure_harness_storage()
+	local build_order, err = normalize_build_order(mode, seed)
+	if build_order == nil then
+		return {ok = false, error = err}
+	end
+	harness.build_order = build_order
+	return {ok = true, build_order = deep_copy(build_order)}
+end
+
+function M.get_build_order()
+	local harness = ensure_harness_storage()
+	return deep_copy(harness.build_order)
 end
 
 function M.run_suite(filter)

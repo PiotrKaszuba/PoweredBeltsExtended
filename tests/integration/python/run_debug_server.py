@@ -44,6 +44,18 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("PBE_DEBUG_REMOVE_RUNTIME_DIR_ON_EXIT", "true"),
         help="Remove staged debug runtime directory on exit (default: true).",
     )
+    parser.add_argument(
+        "--build-order-mode",
+        choices=("normal", "reversed", "random"),
+        default=os.environ.get("PBE_DEBUG_BUILD_ORDER_MODE", "normal"),
+        help="Default build order mode for scenario setup/run after startup.",
+    )
+    parser.add_argument(
+        "--build-order-seed",
+        type=int,
+        default=(int(os.environ["PBE_DEBUG_BUILD_ORDER_SEED"]) if "PBE_DEBUG_BUILD_ORDER_SEED" in os.environ else None),
+        help="Optional seed for random build order mode.",
+    )
     return parser.parse_args()
 
 
@@ -197,6 +209,8 @@ def main() -> int:
         powered_belts_enabled=args.mod_state == "enabled",
         runtime_dirname=runtime_dirname or None,
         remove_runtime_dir_on_exit=remove_runtime_dir_on_exit,
+        build_order_mode=args.build_order_mode,
+        build_order_seed=args.build_order_seed,
     )
 
     runtime: RuntimePaths | None = None
@@ -244,6 +258,8 @@ def main() -> int:
     print(f"PoweredBeltsExtended: {args.mod_state}")
     print(f"allow_commands: {args.allow_commands}")
     print(f"remove_runtime_dir_on_exit: {args.remove_runtime_dir_on_exit}")
+    print(f"build_order_mode: {args.build_order_mode}")
+    print(f"build_order_seed: {args.build_order_seed}")
     print(f"Console log: {console_log_path}")
     print("Press Ctrl+C to stop the server.")
 
@@ -270,7 +286,12 @@ def main() -> int:
                 '\n/c remote.call("pbe_integration_harness","capture_scenario_setup","scan_recovery_smoke")'
                 '\n\n-- Setup and keep scenario active so timed actions/checkpoints continue after unpausing'
                 '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","transfer_underground_multi_io_outage_restore_preserve")'
+                '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","transfer_underground_multi_io_outage_restore_preserve","random",123)'
                 '\n/c game.tick_paused = false'
+                '\n\n-- Change default build order for subsequent setup/run commands'
+                '\n/c remote.call("pbe_integration_harness","set_build_order","reversed")'
+                '\n/c remote.call("pbe_integration_harness","set_build_order","random",123)'
+                '\n/c game.print(helpers.table_to_json(remote.call("pbe_integration_harness","get_build_order")))'
                 '\n\n-- Run scenario from scratch (no setup snapshot)'
                 '\n/c remote.call("pbe_integration_harness","run_scenario","transfer_underground_multi_io_outage_restore_preserve")'
                 '\n/c game.tick_paused = false'
