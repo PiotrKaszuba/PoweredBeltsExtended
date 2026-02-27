@@ -767,6 +767,53 @@ local function collect_target_references(action)
 	return refs
 end
 
+local function is_marked_for_deconstruction(entity)
+	if not (entity and entity.valid) then
+		return false
+	end
+	local ok, marked = pcall(function()
+		return entity.to_be_deconstructed(entity.force)
+	end)
+	if ok then
+		return marked == true
+	end
+	ok, marked = pcall(function()
+		return entity.to_be_deconstructed()
+	end)
+	if ok then
+		return marked == true
+	end
+	return false
+end
+
+local function mine_or_destroy_entity(entity)
+	if not (entity and entity.valid) then
+		return false
+	end
+	local ok_mine, mined = pcall(function()
+		return entity.mine{
+			ignore_minable = true,
+			raise_destroyed = true,
+		}
+	end)
+	if ok_mine and mined then
+		return true
+	end
+	local ok_destroy = pcall(function()
+		if entity and entity.valid then
+			entity.destroy{raise_destroy = true}
+		end
+	end)
+	return ok_destroy == true
+end
+
+local function find_entities_at_position(surface, position)
+	if not (surface and surface.valid and type(position) == "table") then
+		return {}
+	end
+	return surface.find_entities_filtered{position = position, radius = 0.2} or {}
+end
+
 local function order_deconstruction_for_entity(entity)
 	if not (entity and entity.valid) then
 		return false
@@ -877,6 +924,44 @@ local function apply_order_upgrade_action(active, action)
 	end
 end
 
+local function apply_mine_marked_entities_action(active, action)
+	local refs = collect_target_references(action)
+
+	local function mine_marked(entity)
+		if is_marked_for_deconstruction(entity) then
+			mine_or_destroy_entity(entity)
+		end
+	end
+
+	if #refs == 0 then
+		for _, entity in pairs(active.placed_entities or {}) do
+			mine_marked(entity)
+		end
+		return
+	end
+
+	for _, reference_name in pairs(refs) do
+		for _, entity in ipairs(M.get_referenced_entities(active, reference_name)) do
+			mine_marked(entity)
+		end
+	end
+end
+
+local function apply_revive_ghosts_action(active, action)
+	if not (active.surface and active.surface.valid) then
+		return
+	end
+	for _, ghost in pairs(action.ghosts or {}) do
+		for _, entity in pairs(find_entities_at_position(active.surface, ghost.position)) do
+			if entity and entity.valid and entity.name == "entity-ghost" and (ghost.name == nil or entity.ghost_name == ghost.name) then
+				pcall(function()
+					entity.revive{raise_revive = true}
+				end)
+			end
+		end
+	end
+end
+
 local function apply_insert_stateful_power_armor_action(active, action)
 	local inventories = M.get_referenced_inventories(active, action.target_ref)
 	if #inventories == 0 then
@@ -951,6 +1036,85 @@ local function apply_insert_stateful_power_armor_action(active, action)
 	end
 end
 
+local function apply_build_blueprint_action(active, action)
+	if not (active.surface and active.surface.valid) then
+		return
+	end
+
+	local script_inventory = nil
+	local function cleanup_script_inventory()
+		if script_inventory ~= nil then
+			pcall(function()
+				script_inventory.clear()
+			end)
+			pcall(function()
+				script_inventory.destroy()
+			end)
+		end
+	end
+
+	local ok_inventory, inventory_or_error = pcall(function()
+		return game.create_inventory(1)
+	end)
+	if not ok_inventory or inventory_or_error == nil then
+		log("[PBE-HARNESS] build_blueprint skipped: failed to create script inventory: " .. tostring(inventory_or_error))
+		return
+	end
+	script_inventory = inventory_or_error
+
+	local blueprint_stack = script_inventory[1]
+	if blueprint_stack == nil then
+		log("[PBE-HARNESS] build_blueprint skipped: missing script inventory slot")
+		cleanup_script_inventory()
+		return
+	end
+
+	local ok_set, set_result = pcall(function()
+		return blueprint_stack.set_stack{name = "blueprint", count = 1}
+	end)
+	if not ok_set or set_result == false or not blueprint_stack.valid_for_read then
+		log("[PBE-HARNESS] build_blueprint skipped: failed to create blueprint stack")
+		cleanup_script_inventory()
+		return
+	end
+
+	local entities = action.entities
+	if type(entities) ~= "table" or #entities == 0 then
+		entities = {
+			{
+				entity_number = 1,
+				name = action.entity_name or "small-electric-pole",
+				position = {x = 0, y = 0},
+			},
+		}
+	end
+
+	local ok_entities, err_entities = pcall(function()
+		blueprint_stack.set_blueprint_entities(entities)
+	end)
+	if not ok_entities then
+		log("[PBE-HARNESS] build_blueprint skipped: invalid entities payload: " .. tostring(err_entities))
+		cleanup_script_inventory()
+		return
+	end
+
+	local ok_build, result_or_error = pcall(function()
+		return blueprint_stack.build_blueprint{
+			surface = active.surface,
+			force = game.forces.player,
+			position = action.position,
+			direction = action.direction,
+			build_mode = action.force_build == true and defines.build_mode.superforced or defines.build_mode.forced,
+			skip_fog_of_war = true,
+		}
+	end)
+	if not ok_build or result_or_error == false then
+		log("[PBE-HARNESS] build_blueprint failed: " .. tostring(result_or_error))
+	end
+
+	cleanup_script_inventory()
+end
+
 function M.apply_action(active, action, call_main_mod)
 	if action.type == "fill_inventory" then
 		apply_fill_inventory_action(active, action)
@@ -964,8 +1128,14 @@ function M.apply_action(active, action, call_main_mod)
 		apply_cancel_deconstruction_action(active, action)
 	elseif action.type == "order_upgrade" then
 		apply_order_upgrade_action(active, action)
+	elseif action.type == "mine_marked_entities" then
+		apply_mine_marked_entities_action(active, action)
+	elseif action.type == "revive_ghosts" then
+		apply_revive_ghosts_action(active, action)
 	elseif action.type == "insert_stateful_power_armor" then
 		apply_insert_stateful_power_armor_action(active, action)
+	elseif action.type == "build_blueprint" then
+		apply_build_blueprint_action(active, action)
 	elseif action.type == "run_full_scan" then
 		call_main_mod("run_full_scan")
 	elseif action.type == "set_test_overrides" then

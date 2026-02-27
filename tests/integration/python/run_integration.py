@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--factorio-bin", type=Path, default=None, help="Path to factorio executable.")
     parser.add_argument("--artifacts-dir", type=Path, default=None, help="Artifacts output directory.")
-    parser.add_argument("--until-tick", type=int, default=int(os.environ.get("PBE_TEST_UNTIL_TICK", "30000")))
+    parser.add_argument("--until-tick", type=int, default=int(os.environ.get("PBE_TEST_UNTIL_TICK", "32000")))
     parser.add_argument("--timeout-seconds", type=int, default=int(os.environ.get("PBE_TEST_TIMEOUT_SECONDS", "60")))
     parser.add_argument(
         "--build-order-modes",
