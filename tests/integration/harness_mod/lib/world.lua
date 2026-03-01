@@ -814,6 +814,36 @@ local function find_entities_at_position(surface, position)
 	return surface.find_entities_filtered{position = position, radius = 0.2} or {}
 end
 
+local function apply_mine_entities_at_position_action(active, action)
+	if not (active.surface and active.surface.valid and type(action.position) == "table") then
+		return
+	end
+	for _, entity in pairs(find_entities_at_position(active.surface, action.position)) do
+		if entity and entity.valid and (action.name == nil or entity.name == action.name) then
+			mine_or_destroy_entity(entity)
+		end
+	end
+end
+
+local function apply_build_entity_action(active, action)
+	if not (active.surface and active.surface.valid and type(action.position) == "table") then
+		return
+	end
+	if type(action.name) ~= "string" or action.name == "" then
+		return
+	end
+	pcall(function()
+		active.surface.create_entity{
+			name = action.name,
+			position = action.position,
+			direction = action.direction,
+			type = action.entity_type,
+			force = game.forces.player,
+			raise_built = true,
+		}
+	end)
+end
+
 local function order_deconstruction_for_entity(entity)
 	if not (entity and entity.valid) then
 		return false
@@ -1130,8 +1160,12 @@ function M.apply_action(active, action, call_main_mod)
 		apply_order_upgrade_action(active, action)
 	elseif action.type == "mine_marked_entities" then
 		apply_mine_marked_entities_action(active, action)
+	elseif action.type == "mine_entities_at_position" then
+		apply_mine_entities_at_position_action(active, action)
 	elseif action.type == "revive_ghosts" then
 		apply_revive_ghosts_action(active, action)
+	elseif action.type == "build_entity" then
+		apply_build_entity_action(active, action)
 	elseif action.type == "insert_stateful_power_armor" then
 		apply_insert_stateful_power_armor_action(active, action)
 	elseif action.type == "build_blueprint" then

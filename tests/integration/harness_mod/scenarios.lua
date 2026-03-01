@@ -212,6 +212,183 @@ local function make_planner_state_outage_scenario(base)
 	}
 end
 
+local function append_periodic_pole_flicker_actions(actions, config)
+	local cycle_count = config.cycle_count or 2
+	local phase_interval = config.phase_interval or 80
+	local cycle_gap = config.cycle_gap or 120
+	local start_tick = config.start_tick or 0
+
+	local function add(tick, action)
+		action.tick = tick
+		actions[#actions + 1] = action
+	end
+
+	for cycle = 0, cycle_count - 1 do
+		local cycle_start = start_tick + cycle * ((phase_interval * 4) + cycle_gap)
+
+		add(cycle_start + 0 * phase_interval, {type = "mine_entities_at_position", name = "small-electric-pole", position = config.pole_a_position})
+		add(cycle_start + 1 * phase_interval, {type = "mine_entities_at_position", name = "small-electric-pole", position = config.pole_b_position})
+		add(cycle_start + 2 * phase_interval, {
+			type = "build_entity",
+			name = "small-electric-pole",
+			position = config.pole_a_position,
+		})
+		add(cycle_start + 3 * phase_interval, {
+			type = "build_entity",
+			name = "small-electric-pole",
+			position = config.pole_b_position,
+		})
+	end
+end
+
+local function make_multi_io_planner_blueprint_flicker_scenario()
+	local phase_interval = 90
+	local cycle_span = phase_interval * 4
+	local cycle_gap = cycle_span * 2
+	local cycle_count = 8
+	local first_major_tick = 120
+	local major_spacing = cycle_span * 2
+	local y_line = 0.5
+
+	local actions = {
+		{
+			tick = 0,
+			type = "fill_inventory",
+			target_ref = "source",
+			stacks = {
+				{name = "iron-plate", count = 60, target_ref = "source_chest_inline"},
+				{name = "iron-plate", count = 60, target_ref = "source_chest_north_left"},
+				{name = "iron-plate", count = 60, target_ref = "source_chest_north_right"},
+				{name = "iron-plate", count = 60, target_ref = "source_chest_south_left"},
+				{name = "iron-plate", count = 60, target_ref = "source_chest_south_right"},
+			},
+		},
+		{tick = 0, type = "fuel_burner_inserters", count = 100},
+		{tick = 0, type = "build_entity", name = "small-electric-pole", position = {x = 5.5, y = y_line}},
+		{tick = 0, type = "build_entity", name = "small-electric-pole", position = {x = 7.5, y = y_line}},
+
+		{
+			tick = first_major_tick,
+			type = "build_blueprint",
+			position = {x = 6.5, y = 2.5},
+			force_build = false,
+		},
+		{
+			tick = first_major_tick + major_spacing,
+			type = "build_blueprint",
+			position = {x = 3.5, y = y_line},
+			force_build = false,
+		},
+		{
+			tick = first_major_tick + major_spacing * 2,
+			type = "build_blueprint",
+			position = {x = 8.5, y = y_line},
+			force_build = true,
+		},
+		{
+			tick = first_major_tick + major_spacing * 3,
+			type = "mine_marked_entities",
+			target_refs = {"underground_output", "belt_3"},
+		},
+		{
+			tick = first_major_tick + major_spacing * 4,
+			type = "revive_ghosts",
+			ghosts = {
+				{name = "underground-belt", position = {x = 9.5, y = y_line}},
+			},
+		},
+		{
+			tick = first_major_tick + major_spacing * 5,
+			type = "build_blueprint",
+			position = {x = 5.5, y = y_line},
+			force_build = true,
+			entities = {
+				{entity_number = 1, name = "underground-belt", position = {x = 0, y = 0}, direction = 4, type = "input"},
+			},
+		},
+		{
+			tick = first_major_tick + major_spacing * 6,
+			type = "revive_ghosts",
+			ghosts = {
+				{name = "underground-belt", position = {x = 5.5, y = y_line}},
+			},
+		},
+		{
+			tick = first_major_tick + major_spacing * 7,
+			type = "mine_entities_at_position",
+			name = "entity-ghost",
+			position = {x = 8.5, y = y_line},
+		},
+		{
+			tick = first_major_tick + major_spacing * 7,
+			type = "build_blueprint",
+			position = {x = 8.5, y = y_line},
+			force_build = true,
+			entities = {
+				{entity_number = 1, name = "underground-belt", position = {x = 0, y = 0}, direction = 4, type = "output"},
+			},
+		},
+		{
+			tick = first_major_tick + major_spacing * 8,
+			type = "mine_entities_at_position",
+			name = "underground-belt",
+			position = {x = 9.5, y = y_line},
+		},
+		{
+			tick = first_major_tick + major_spacing * 8,
+			type = "build_entity",
+			name = "transport-belt",
+			position = {x = 9.5, y = y_line},
+			direction = 4,
+		},
+	}
+
+	append_periodic_pole_flicker_actions(actions, {
+		start_tick = first_major_tick + phase_interval,
+		phase_interval = phase_interval,
+		cycle_gap = cycle_gap,
+		cycle_count = cycle_count,
+		pole_a_position = {x = 5.5, y = y_line},
+		pole_b_position = {x = 7.5, y = y_line},
+	})
+
+	return {
+		id = "planner_blueprint_build_and_force_build_multi_io_flicker",
+		layout_id = "underground_splitter_line_multi_io",
+		inserter_name = "burner-inserter",
+		researched_technologies = {"inserter-capacity-bonus-1"},
+		max_tick = first_major_tick + major_spacing * 10,
+		settings_overrides = {
+			underground_item_transfer_mode = "name-only",
+			operations_per_tick = 128,
+		},
+		actions = actions,
+		checkpoints = {
+			{tick = first_major_tick + major_spacing * 4, assertions = {{type = "structural_consistency"}}},
+			{tick = first_major_tick + major_spacing * 8, assertions = {{type = "structural_consistency"}}},
+			{
+				tick = first_major_tick + major_spacing * 10,
+				assertions = {
+					{
+						type = "transfer_complete",
+						source_ref = "source",
+						sink_ref = "sink",
+						expected_contents = {
+							{name = "iron-plate", count = 60, target_ref = "source_chest_inline"},
+							{name = "iron-plate", count = 60, target_ref = "source_chest_north_left"},
+							{name = "iron-plate", count = 60, target_ref = "source_chest_north_right"},
+							{name = "iron-plate", count = 60, target_ref = "source_chest_south_left"},
+							{name = "iron-plate", count = 60, target_ref = "source_chest_south_right"},
+						},
+						source_should_be_empty = true,
+					},
+					{type = "structural_consistency"},
+				},
+			},
+		},
+	}
+end
+
 local function default_scenarios()
 	return {
 		make_transfer_scenario{
@@ -556,6 +733,7 @@ local function default_scenarios()
 				},
 			},
 		},
+		make_multi_io_planner_blueprint_flicker_scenario(),
 		{
 			id = "scan_recovery_smoke",
 			layout_id = "straight_line",
