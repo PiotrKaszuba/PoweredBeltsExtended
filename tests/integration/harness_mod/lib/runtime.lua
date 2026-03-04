@@ -373,6 +373,9 @@ local function finalize_active_scenario()
 	local harness = ensure_harness_storage()
 	local active = harness.active
 	if active == nil then return end
+	if active.inventory ~= nil and active.inventory.valid then
+		active.inventory.destroy()
+	end
 	local scenario_result = summarize_scenario(active)
 	harness.results.scenarios[#harness.results.scenarios + 1] = scenario_result
 	harness.results.summary.total = harness.results.summary.total + 1
@@ -412,14 +415,17 @@ local function start_scenario(scenario, setup_options)
 		build_order = deep_copy(harness.build_order)
 	end
 	local placed_entities = world.place_layout(layout, surface, build_order)
-	world.bootstrap_daytime_and_power(surface, area, placed_entities)
+	world.bootstrap_daytime_and_power(layout, surface, area, placed_entities)
 	call_main_mod("run_full_scan")
 	local post_scan = call_main_mod("get_state_snapshot", surface.index)
 	local failing_metrics = non_zero_snapshot_metrics(post_scan)
 	if failing_metrics ~= nil and #failing_metrics > 0 then
 		log("[PBE-HARNESS] post-layout scan still inconsistent: " .. table.concat(failing_metrics, ", "))
 	end
-
+	
+	
+	local mine_inventory = game.create_inventory(1024)
+	
 	local active = {
 		scenario = deep_copy(scenario),
 		layout = layout,
@@ -433,6 +439,7 @@ local function start_scenario(scenario, setup_options)
 		build_order = build_order,
 		source_baseline_fingerprint = {},
 		expected_contents = {},
+		inventory = mine_inventory,
 	}
 	active.scenario.actions = sort_by_tick(active.scenario.actions or {})
 	active.scenario.checkpoints = sort_by_tick(active.scenario.checkpoints or {})
@@ -474,6 +481,8 @@ local function run_active_scenario_tick()
 
 	while active.next_action_idx <= #active.scenario.actions do
 		local action = active.scenario.actions[active.next_action_idx]
+		-- DEBUG: print pending action
+		-- game.print(string.format("[PBE-HARNESS] applying action %s at tick %d", active.scenario.actions[active.next_action_idx].type, active.scenario.actions[active.next_action_idx].tick))
 		if (action.tick or 0) > elapsed then break end
 		world.apply_action(active, action, call_main_mod)
 		active.next_action_idx = active.next_action_idx + 1

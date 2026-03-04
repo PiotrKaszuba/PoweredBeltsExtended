@@ -16,7 +16,7 @@ local function make_transfer_scenario(base)
 		expected_failed_mod_enabled = base.expected_failed_mod_enabled or 0,
 		expected_failed_mod_disabled = base.expected_failed_mod_disabled or 0,
 		settings_overrides = {
-			underground_item_transfer_mode = base.underground_item_transfer_mode or "name-only",
+			underground_item_transfer_mode = base.underground_item_transfer_mode or "preserve-full-state",
 			operations_per_tick = base.operations_per_tick or 128,
 		},
 		actions = {
@@ -167,7 +167,7 @@ local function make_planner_state_outage_scenario(base)
 		expected_failed_mod_enabled = base.expected_failed_mod_enabled or 0,
 		expected_failed_mod_disabled = base.expected_failed_mod_disabled or 0,
 		settings_overrides = {
-			underground_item_transfer_mode = base.underground_item_transfer_mode or "name-only",
+			underground_item_transfer_mode = base.underground_item_transfer_mode or "preserve-full-state",
 			operations_per_tick = base.operations_per_tick or 128,
 		},
 		actions = actions,
@@ -205,6 +205,243 @@ local function make_planner_state_outage_scenario(base)
 						ground_item_names = base.ground_item_names,
 						ground_items_area = base.ground_items_area,
 					},
+					{type = "structural_consistency"},
+				},
+			},
+		},
+	}
+end
+
+local function append_periodic_pole_flicker_actions(actions, config)
+	local cycle_count = config.cycle_count or 2
+	local phase_interval = config.phase_interval or 80
+	local cycle_gap = config.cycle_gap or 120
+	local start_tick = config.start_tick or 0
+
+	local function add(tick, action)
+		action.tick = tick
+		actions[#actions + 1] = action
+	end
+
+	local build_pole_a_action = function() return {
+		type = "build_entity",
+		name = "small-electric-pole",
+		position = config.pole_a_position,
+	} end
+	local build_pole_b_action = function() return {
+		type = "build_entity",
+			name = "small-electric-pole",
+			position = config.pole_b_position,
+	} end
+	
+
+	add(0, build_pole_a_action())
+	add(0, build_pole_b_action())
+
+	for cycle = 0, cycle_count - 1 do
+		local cycle_start = start_tick + cycle * ((phase_interval * 4) + cycle_gap)
+
+		add(cycle_start + 0 * phase_interval, {type = "mine_entities_at_position", name = "small-electric-pole", position = config.pole_a_position})
+		add(cycle_start + 1 * phase_interval, {type = "mine_entities_at_position", name = "small-electric-pole", position = config.pole_b_position})
+		add(cycle_start + 2 * phase_interval, build_pole_a_action())
+		add(cycle_start + 3 * phase_interval, build_pole_b_action())
+	end
+end
+
+local function sort_actions_by_tick(actions)
+	table.sort(actions, function(a, b)
+		return a.tick < b.tick
+	end)
+end
+
+local function make_multi_io_planner_blueprint_flicker_scenario()
+	local phase_interval = 90
+	local cycle_span = phase_interval * 4
+	local cycle_gap = 120
+	local cycle_count = 22
+	local first_major_tick = 120
+	local major_spacing = cycle_span * 2 + cycle_gap
+	local y_line = 0.5
+
+	local actions = {
+		{
+			tick = 0,
+			type = "find_and_remove_matching_entities",
+			position = {x = 4.5, y = y_line},
+			radius = 4.0,
+			entity_name = "medium-electric-pole",
+			entity_type = "electric-pole",
+		},
+		{
+			tick = 0,
+			type = "find_and_remove_matching_entities",
+			position = {x = 8.5, y = y_line},
+			radius = 4.0,
+			entity_name = "medium-electric-pole",
+			entity_type = "electric-pole",
+		},
+		{
+			tick = 0,
+			type = "fill_inventory",
+			target_ref = "source",
+			stacks = {
+				{name = "iron-plate", count = 60, target_ref = "source_chest_inline"},
+				{name = "iron-plate", count = 60, target_ref = "source_chest_north_left"},
+				{name = "iron-plate", count = 60, target_ref = "source_chest_north_right"},
+				{name = "iron-plate", count = 60, target_ref = "source_chest_south_left"},
+				{name = "iron-plate", count = 60, target_ref = "source_chest_south_right"},
+			},
+		},
+
+		{
+			tick = 0,
+			type = "set_surface_daylight",
+			mode = "full-day",
+		},
+		
+		{
+			tick = first_major_tick + major_spacing,
+			type = "build_blueprint",
+			position = {x = 3.5, y = y_line},
+			force_build = false,
+		},
+		{
+			tick = first_major_tick + major_spacing * 2,
+			type = "build_blueprint",
+			position = {x = 8.5, y = y_line},
+			force_build = true,
+		},
+		{
+			tick = first_major_tick + major_spacing * 2 + 1,
+			type = "mine_entities_at_position",
+			name = "entity-ghost",
+			position = {x = 8.5, y = y_line},
+		},
+		{
+			tick = first_major_tick + major_spacing * 3,
+			type = "mine_marked_entities",
+			target_refs = {"underground_output", "belt_before_splitter_1"},
+		},
+		{
+			tick = first_major_tick + major_spacing * 4,
+			type = "revive_ghosts",
+			ghosts = {
+				{name = "underground-belt", position = {x = 9.5, y = y_line}},
+			},
+		},
+
+		{
+			tick = first_major_tick + major_spacing * 5,
+			type = "build_blueprint",
+			position = {x = 5.5, y = y_line},
+			force_build = true,
+			entities = {
+				{entity_number = 1, name = "underground-belt", position = {x = 0, y = 0}, direction = 4, type = "input"},
+			},
+		},
+		{
+			tick = first_major_tick + major_spacing * 6,
+			type = "revive_ghosts",
+			ghosts = {
+				{name = "underground-belt", position = {x = 5.5, y = y_line}},
+			},
+		},
+
+		{
+			tick = first_major_tick + major_spacing * 7,
+			type = "set_surface_daylight",
+			mode = "full-day",
+		},
+
+		{
+			tick = first_major_tick + major_spacing * 7 + 1,
+			type = "build_blueprint",
+			position = {x = 8.5, y = y_line},
+			force_build = true,
+			entities = {
+				{entity_number = 1, name = "underground-belt", position = {x = 0, y = 0}, direction = 4, type = "output"},
+			},
+		},
+		{
+			tick = first_major_tick + major_spacing * 8,
+			type = "mine_entities_at_position",
+			entity_type = "underground-belt",
+			position = {x = 4.5, y = y_line},
+		},
+		{
+			tick = first_major_tick + major_spacing * 8 + 1,
+			type = "build_entity",
+			name = "transport-belt",
+			position = {x = 4.5, y = y_line},
+			direction = 4,
+		},
+		{
+			tick = first_major_tick + major_spacing * 9,
+			type = "revive_ghosts",
+			ghosts = {
+				{name = "underground-belt", position = {x = 8.5, y = y_line}},
+			},
+		},
+		{
+			tick = first_major_tick + major_spacing * 10,
+			type = "mine_entities_at_position",
+			entity_type = "underground-belt",
+			position = {x = 9.5, y = y_line},
+		},
+		{
+			tick = first_major_tick + major_spacing * 10 + 1,
+			type = "build_entity",
+			name = "transport-belt",
+			position = {x = 9.5, y = y_line},
+			direction = 4,
+		},
+	}
+
+	append_periodic_pole_flicker_actions(actions, {
+		start_tick = first_major_tick + phase_interval,
+		phase_interval = phase_interval,
+		cycle_gap = cycle_gap,
+		cycle_count = cycle_count,
+		pole_a_position = {x = 4.5, y = y_line + 1.0},
+		pole_b_position = {x = 8.5, y = y_line + 1.0},
+	})
+
+	sort_actions_by_tick(actions)
+
+	return {
+		id = "planner_blueprint_build_and_force_build_multi_io_flicker",
+		layout_id = "underground_splitter_line_multi_io",
+		inserter_name = "bulk-inserter",
+		researched_technologies = {"inserter-capacity-bonus-1"},
+		max_tick = first_major_tick + major_spacing * 12 + 2500,
+		settings_overrides = {
+			underground_item_transfer_mode = "preserve-full-state",
+			operations_per_tick = 128,
+		},
+		actions = actions,
+		checkpoints = {
+			{tick = first_major_tick + major_spacing * 4, assertions = {{type = "structural_consistency"}}},
+			{tick = first_major_tick + major_spacing * 8, assertions = {{type = "structural_consistency"}}},
+			{
+				tick = first_major_tick + major_spacing * 12 + 2500,
+				assertions = {
+					{
+						type = "transfer_complete",
+						source_ref = "source",
+						sink_ref = "sink",
+						expected_contents = {
+							{name = "iron-plate", count = 60, target_ref = "source_chest_inline"},
+							{name = "iron-plate", count = 60, target_ref = "source_chest_north_left"},
+							{name = "iron-plate", count = 60, target_ref = "source_chest_north_right"},
+							{name = "iron-plate", count = 60, target_ref = "source_chest_south_left"},
+							{name = "iron-plate", count = 60, target_ref = "source_chest_south_right"},
+						},
+						source_should_be_empty = true,
+						include_ground_items = true,
+						include_mine_inventory = true,
+						ground_item_names = {"iron-plate"},
+					},
+	
 					{type = "structural_consistency"},
 				},
 			},
@@ -459,7 +696,7 @@ local function default_scenarios()
 			inserter_name = "burner-inserter",
 			max_tick = 2400,
 			settings_overrides = {
-				underground_item_transfer_mode = "name-only",
+				underground_item_transfer_mode = "preserve-full-state",
 				operations_per_tick = 128,
 			},
 			actions = {
@@ -476,7 +713,7 @@ local function default_scenarios()
 				{
 					tick = 120,
 					type = "build_blueprint",
-					position = {x = 6.5, y = 2.5},
+					position = {x = 6.5, y = 1.5},
 					force_build = false,
 				},
 				{
@@ -494,7 +731,7 @@ local function default_scenarios()
 				{
 					tick = 280,
 					type = "mine_marked_entities",
-					target_refs = {"underground_output", "belt_3", },
+					target_refs = {"underground_output", "belt_before_splitter_1", },
 				},
 				{
 					tick = 320,
@@ -531,7 +768,7 @@ local function default_scenarios()
 						{
 							type = "blueprint_build_result",
 							expected_missing_ghosts = {
-								{name = "underground-belt", position = {x = 9.5, y = 0.5}},
+								{name = "underground-belt", position = {x = 8.5, y = 0.5}},
 							},
 							expected_not_deconstruction_marked = {
 								{name = "underground-belt", position = {x = 9.5, y = 0.5}},
@@ -556,13 +793,14 @@ local function default_scenarios()
 				},
 			},
 		},
+		make_multi_io_planner_blueprint_flicker_scenario(),
 		{
 			id = "scan_recovery_smoke",
 			layout_id = "straight_line",
 			inserter_name = "bulk-inserter",
 			max_tick = 900,
 			settings_overrides = {
-				underground_item_transfer_mode = "name-only",
+				underground_item_transfer_mode = "preserve-full-state",
 				operations_per_tick = 128,
 			},
 			actions = {

@@ -39,6 +39,13 @@ local function evaluate_transfer(active, assertion)
 			sink_contents[item_name] = (sink_contents[item_name] or 0) + count
 		end
 	end
+	if assertion.include_mine_inventory then
+		local mine_inventory = active.inventory
+		local mine_contents = world.aggregate_inventory_contents(mine_inventory)
+		for item_name, count in pairs(mine_contents) do
+			sink_contents[item_name] = (sink_contents[item_name] or 0) + count
+		end
+	end
 	local passed = world.maps_equal(expected, sink_contents)
 	local message = "Sink contents match expected"
 	if not passed then

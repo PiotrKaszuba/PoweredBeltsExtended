@@ -1,17 +1,15 @@
-return {
-  id = "underground_splitter_line_multi_io",
-  version = 1,
-  area = {
-    left_top = {
-      x = -6.0,
-      y = -8.0,
-    },
-    right_bottom = {
-      x = 30.0,
-      y = 18.0,
-    },
-  },
-  references = {
+require("shared_items")
+
+local underground_len = 3
+local num_input_belts = 2
+local num_output_belts = 2
+local belts_between_underground_end_and_splitter = 1
+
+local x_add_to_end = 7.0 + underground_len + belts_between_underground_end_and_splitter + num_output_belts
+
+local layout_skeleton = layouts.get_layout_skeleton("underground_splitter_line_multi_io", num_input_belts, true, underground_len, true, belts_between_underground_end_and_splitter, num_output_belts, true, true)
+
+layout_skeleton.references = {
     source = {
       "source_chest_inline",
       "source_chest_north_left",
@@ -36,22 +34,25 @@ return {
       "output_inserter_north",
       "output_inserter_south",
     },
-  },
-  entities = {
+  }
+
+
+
+local additional_entities = {
     {
       id = "source_chest_inline",
       name = "steel-chest",
       position = {
-        x = 0.5,
-        y = 0.5,
+        x = layouts.x_start,
+        y = layouts.y_line,
       },
     },
     {
       id = "input_inserter_inline",
       name = "burner-inserter",
       position = {
-        x = 1.5,
-        y = 0.5,
+        x = layouts.x_start + 1.0,
+        y = layouts.y_line,
       },
       direction = 12,
     },
@@ -59,16 +60,16 @@ return {
       id = "source_chest_north_left",
       name = "steel-chest",
       position = {
-        x = 2.5,
-        y = -1.5,
+        x = layouts.x_start + 2.0,
+        y = layouts.y_line - 2.0,
       },
     },
     {
       id = "input_inserter_north_left",
       name = "burner-inserter",
       position = {
-        x = 2.5,
-        y = -0.5,
+        x = layouts.x_start + 2.0,
+        y = layouts.y_line - 1.0,
       },
       direction = 0,
     },
@@ -76,16 +77,16 @@ return {
       id = "source_chest_north_right",
       name = "steel-chest",
       position = {
-        x = 3.5,
-        y = -1.5,
+        x = layouts.x_start + 3.0,
+        y = layouts.y_line - 2.0,
       },
     },
     {
       id = "input_inserter_north_right",
       name = "burner-inserter",
       position = {
-        x = 3.5,
-        y = -0.5,
+        x = layouts.x_start + 3.0,
+        y = layouts.y_line - 1.0,
       },
       direction = 0,
     },
@@ -93,16 +94,16 @@ return {
       id = "source_chest_south_left",
       name = "steel-chest",
       position = {
-        x = 2.5,
-        y = 2.5,
+        x = layouts.x_start + 2.0,
+        y = layouts.y_line + 2.0,
       },
     },
     {
       id = "input_inserter_south_left",
       name = "burner-inserter",
       position = {
-        x = 2.5,
-        y = 1.5,
+        x = layouts.x_start + 2.0,
+        y = layouts.y_line + 1.0,
       },
       direction = 8,
     },
@@ -110,117 +111,25 @@ return {
       id = "source_chest_south_right",
       name = "steel-chest",
       position = {
-        x = 3.5,
-        y = 2.5,
+        x = layouts.x_start + 3.0,
+        y = layouts.y_line + 2.0,
       },
     },
     {
       id = "input_inserter_south_right",
       name = "burner-inserter",
       position = {
-        x = 3.5,
-        y = 1.5,
+        x = layouts.x_start + 3.0,
+        y = layouts.y_line + 1.0,
       },
       direction = 8,
-    },
-    {
-      id = "belt_1",
-      name = "transport-belt",
-      position = {
-        x = 2.5,
-        y = 0.5,
-      },
-      direction = 4,
-    },
-    {
-      id = "belt_2",
-      name = "transport-belt",
-      position = {
-        x = 3.5,
-        y = 0.5,
-      },
-      direction = 4,
-    },
-    {
-      id = "underground_input",
-      name = "underground-belt",
-      position = {
-        x = 4.5,
-        y = 0.5,
-      },
-      direction = 4,
-      type = "input",
-    },
-    {
-      id = "underground_output",
-      name = "underground-belt",
-      position = {
-        x = 8.5,
-        y = 0.5,
-      },
-      direction = 4,
-      type = "output",
-    },
-    {
-      id = "belt_3",
-      name = "transport-belt",
-      position = {
-        x = 9.5,
-        y = 0.5,
-      },
-      direction = 4,
-    },
-    {
-      id = "belt_4",
-      name = "transport-belt",
-      position = {
-        x = 10.5,
-        y = 0.5,
-      },
-      direction = 4,
-    },
-    {
-      id = "line_splitter",
-      name = "splitter",
-      position = {
-        x = 11.0,
-        y = 0.5,
-      },
-      direction = 4,
-    },
-    {
-      id = "belt_5",
-      name = "transport-belt",
-      position = {
-        x = 12.5,
-        y = 0.5,
-      },
-      direction = 4,
-    },
-    {
-      id = "belt_merge_north",
-      name = "transport-belt",
-      position = {
-        x = 12.5,
-        y = 1.5,
-      },
-      direction = 0,
-    },
-    {
-      id = "belt_6",
-      name = "transport-belt",
-      position = {
-        x = 13.5,
-        y = 0.5,
-      },
-      direction = 4,
     },
     {
       id = "output_inserter_north",
       name = "burner-inserter",
       position = {
-        x = 13.5,
-        y = -0.5,
+        x = layouts.x_start + x_add_to_end,
+        y = layouts.y_line - 1.0,
       },
       direction = 8,
     },
@@ -228,16 +137,16 @@ return {
       id = "sink_chest_north",
       name = "steel-chest",
       position = {
-        x = 13.5,
-        y = -1.5,
+        x = layouts.x_start + x_add_to_end,
+        y = layouts.y_line - 2.0,
       },
     },
     {
       id = "output_inserter_south",
       name = "burner-inserter",
       position = {
-        x = 13.5,
-        y = 1.5,
+        x = layouts.x_start + x_add_to_end,
+        y = layouts.y_line + 1.0,
       },
       direction = 0,
     },
@@ -245,16 +154,16 @@ return {
       id = "sink_chest_south",
       name = "steel-chest",
       position = {
-        x = 13.5,
-        y = 2.5,
+        x = layouts.x_start + x_add_to_end,
+        y = layouts.y_line + 2.0,
       },
     },
     {
       id = "output_inserter_inline",
       name = "burner-inserter",
       position = {
-        x = 14.5,
-        y = 0.5,
+        x = layouts.x_start + x_add_to_end + 1.0,
+        y = layouts.y_line,
       },
       direction = 12,
     },
@@ -262,9 +171,14 @@ return {
       id = "sink_chest_inline",
       name = "steel-chest",
       position = {
-        x = 15.5,
-        y = 0.5,
+        x = layouts.x_start + x_add_to_end + 2.0,
+        y = layouts.y_line,
       },
     },
-  },
-}
+  }
+
+for _, entity in ipairs(additional_entities) do
+  table.insert(layout_skeleton.entities, entity)
+end
+
+return layout_skeleton

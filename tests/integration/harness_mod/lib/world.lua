@@ -334,25 +334,26 @@ local function set_surface_daylight(surface, mode)
 	error("Unknown daylight mode: " .. tostring(effective_mode))
 end
 
-function M.bootstrap_daytime_and_power(surface, area, placed_entities)
+function M.bootstrap_daytime_and_power(layout, surface, area, placed_entities)
 	if not (surface and surface.valid) then
 		return
 	end
 
 	set_surface_daylight(surface, "full-day")
 
-	local min_x, max_x, min_y = compute_entity_bounds(placed_entities, area)
-	if min_x == nil or max_x == nil or min_y == nil then
+	local min_x, max_x, _, _ = compute_entity_bounds(placed_entities, area)
+	if min_x == nil or max_x == nil then
 		return
 	end
-
+	local y_line = layout.y_line
 	local left = math.floor(min_x) - 1
 	local right = math.ceil(max_x) + 1
-	local lane_pole_y = math.floor(min_y + 2) + 0.5
+	local top_pole_y = y_line - 4
+	local lane_pole_y = y_line + 3
 	local solar_pole_y = lane_pole_y + 4
 	local solar_y = solar_pole_y + 2
 
-	for x = left, right, 6 do
+	for x = left, right, 7 do
 		place_infrastructure_entity(surface, {
 			name = "medium-electric-pole",
 			position = {x = x + 0.5, y = lane_pole_y},
@@ -361,6 +362,11 @@ function M.bootstrap_daytime_and_power(surface, area, placed_entities)
 		place_infrastructure_entity(surface, {
 			name = "medium-electric-pole",
 			position = {x = x + 0.5, y = solar_pole_y},
+			force = game.forces.player,
+		})
+		place_infrastructure_entity(surface, {
+			name = "medium-electric-pole",
+			position = {x = x + 0.5, y = top_pole_y},
 			force = game.forces.player,
 		})
 	end
@@ -786,32 +792,63 @@ local function is_marked_for_deconstruction(entity)
 	return false
 end
 
-local function mine_or_destroy_entity(entity)
+local function mine_entity(entity, inventory)
 	if not (entity and entity.valid) then
 		return false
 	end
+	-- local inv_contents = inventory.get_contents()
+	-- DEBUG: before mining, print the inventory contents
+	-- game.print(string.format("[PBE-HARNESS] before mining, inventory contents: %s", serpent.block(inv_contents)))
 	local ok_mine, mined = pcall(function()
 		return entity.mine{
 			ignore_minable = true,
 			raise_destroyed = true,
+			inventory = inventory,
 		}
 	end)
-	if ok_mine and mined then
-		return true
-	end
-	local ok_destroy = pcall(function()
-		if entity and entity.valid then
-			entity.destroy{raise_destroy = true}
-		end
-	end)
-	return ok_destroy == true
+	-- DEBUG: after mining, print the inventory contents
+	-- inv_contents = inventory.get_contents()
+	-- game.print(string.format("[PBE-HARNESS] after mining, inventory contents: %s", serpent.block(inv_contents)))
+	return ok_mine and mined == true
 end
 
-local function find_entities_at_position(surface, position)
+local function find_entities_at_position(surface, position, entity_type)
 	if not (surface and surface.valid and type(position) == "table") then
 		return {}
 	end
-	return surface.find_entities_filtered{position = position, radius = 0.2} or {}
+	local query = {position = position, radius = 0.2}
+	if entity_type ~= nil then
+		query.type = entity_type
+	end
+	return surface.find_entities_filtered(query) or {}
+end
+
+local function apply_mine_entities_at_position_action(active, action)
+	if not (active.surface and active.surface.valid and type(action.position) == "table") then
+		return
+	end
+	for _, entity in pairs(find_entities_at_position(active.surface, action.position, action.entity_type)) do
+		if entity and entity.valid and (action.name == nil or entity.name == action.name) then
+			mine_entity(entity, active.inventory)
+		end
+	end
+end
+
+local function apply_build_entity_action(active, action)
+	if not (active.surface and active.surface.valid and type(action.position) == "table") then
+		return
+	end
+	if type(action.name) ~= "string" or action.name == "" then
+		return
+	end
+	place_infrastructure_entity(active.surface, {
+		name = action.name,
+		position = action.position,
+		direction = action.direction,
+		force = game.forces.player,
+		raise_built = true,
+	})
+
 end
 
 local function order_deconstruction_for_entity(entity)
@@ -929,7 +966,7 @@ local function apply_mine_marked_entities_action(active, action)
 
 	local function mine_marked(entity)
 		if is_marked_for_deconstruction(entity) then
-			mine_or_destroy_entity(entity)
+			mine_entity(entity, active.inventory)
 		end
 	end
 
@@ -1115,6 +1152,26 @@ local function apply_build_blueprint_action(active, action)
 	cleanup_script_inventory()
 end
 
+local function apply_find_and_remove_matching_entities_action(active, action)
+	if not (active.surface and active.surface.valid) then
+		return
+	end
+	local query = {position=action.position, radius=action.radius}
+	if action.entity_type ~= nil then
+		query.type = action.entity_type
+	end
+
+	local entities = active.surface.find_entities_filtered(query)
+	if #entities == 0 then
+		return
+	end
+	for _, entity in ipairs(entities) do
+		if entity.valid and entity.name == action.entity_name then
+			mine_entity(entity, active.inventory)
+		end
+	end
+end
+
 function M.apply_action(active, action, call_main_mod)
 	if action.type == "fill_inventory" then
 		apply_fill_inventory_action(active, action)
@@ -1130,12 +1187,18 @@ function M.apply_action(active, action, call_main_mod)
 		apply_order_upgrade_action(active, action)
 	elseif action.type == "mine_marked_entities" then
 		apply_mine_marked_entities_action(active, action)
+	elseif action.type == "mine_entities_at_position" then
+		apply_mine_entities_at_position_action(active, action)
 	elseif action.type == "revive_ghosts" then
 		apply_revive_ghosts_action(active, action)
+	elseif action.type == "build_entity" then
+		apply_build_entity_action(active, action)
 	elseif action.type == "insert_stateful_power_armor" then
 		apply_insert_stateful_power_armor_action(active, action)
 	elseif action.type == "build_blueprint" then
 		apply_build_blueprint_action(active, action)
+	elseif action.type == "find_and_remove_matching_entities" then
+		apply_find_and_remove_matching_entities_action(active, action)
 	elseif action.type == "run_full_scan" then
 		call_main_mod("run_full_scan")
 	elseif action.type == "set_test_overrides" then
