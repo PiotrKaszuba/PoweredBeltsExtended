@@ -6,6 +6,7 @@ script.on_event(defines.events.on_tick, runtime.on_tick)
 
 remote.add_interface("pbe_integration_harness", {
 	run_scenario = runtime.run_scenario,
+	get_scenario_definition = runtime.get_scenario_definition,
 	capture_scenario_setup = runtime.capture_scenario_setup,
 	prepare_scenario_setup = runtime.prepare_scenario_setup,
 	set_build_order = runtime.set_build_order,
@@ -13,4 +14,7 @@ remote.add_interface("pbe_integration_harness", {
 	run_suite = runtime.run_suite,
 	get_results = runtime.get_results,
 	reset_world = runtime.reset_world,
+	add_action_to_active_scenario = runtime.add_action_to_active_scenario,
+	run_item_location_scan_now = runtime.run_item_location_scan_now,
+	get_active_action_history = runtime.get_active_action_history,
 })

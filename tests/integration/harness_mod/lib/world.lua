@@ -642,6 +642,154 @@ function M.aggregate_inventory_fingerprint(inventories)
 	return combined
 end
 
+local function add_item_counts(target, item_name, count)
+	if type(item_name) ~= "string" or item_name == "" then
+		return
+	end
+	if type(count) ~= "number" or count == 0 then
+		return
+	end
+	target[item_name] = (target[item_name] or 0) + count
+end
+
+local function inventory_item_counts(inventory)
+	if inventory == nil then
+		return {}
+	end
+	local ok, contents = pcall(function()
+		return inventory.get_contents()
+	end)
+	if not ok or contents == nil then
+		return {}
+	end
+	return M.contents_to_name_count_map(contents)
+end
+
+local function collect_transport_line_counts(entity, entry)
+	if not (entity and entity.valid) then
+		return
+	end
+	local max_line_index = 0
+	local ok_max, max_line = pcall(function()
+		return entity.get_max_transport_line_index()
+	end)
+	if ok_max and type(max_line) == "number" then
+		max_line_index = max_line
+	end
+	if max_line_index <= 0 then
+		return
+	end
+
+	entry.transport_lines = {}
+	for line_index = 1, max_line_index do
+		local ok_line, line = pcall(function()
+			return entity.get_transport_line(line_index)
+		end)
+		if ok_line and line ~= nil then
+			local counts = {}
+			local ok_contents, line_contents = pcall(function()
+				return line.get_contents()
+			end)
+			if ok_contents and type(line_contents) == "table" then
+				for item_name, count in pairs(line_contents) do
+					add_item_counts(counts, item_name, count)
+					add_item_counts(entry.counts, item_name, count)
+				end
+			end
+			entry.transport_lines[tostring(line_index)] = counts
+		end
+	end
+end
+
+local function collect_inserter_hand_counts(entity, entry)
+	if not (entity and entity.valid and entity.type == "inserter") then
+		return
+	end
+	local held_stack = entity.held_stack
+	if held_stack ~= nil and held_stack.valid_for_read then
+		add_item_counts(entry.counts, held_stack.name, held_stack.count or 0)
+		entry.hand = {
+			name = held_stack.name,
+			count = held_stack.count or 0,
+		}
+	end
+end
+
+local function entity_item_snapshot(entity, entity_id)
+	if not (entity and entity.valid) then
+		return nil
+	end
+	local entry = {
+		entity_id = entity_id,
+		name = entity.name,
+		type = entity.type,
+		position = {x = entity.position.x, y = entity.position.y},
+		counts = {},
+	}
+	local inventory = M.resolve_inventory(entity)
+	if inventory ~= nil then
+		for item_name, count in pairs(inventory_item_counts(inventory)) do
+			add_item_counts(entry.counts, item_name, count)
+		end
+	end
+	collect_inserter_hand_counts(entity, entry)
+	collect_transport_line_counts(entity, entry)
+	if next(entry.counts) == nil then
+		return nil
+	end
+	return entry
+end
+
+function M.scan_chain_item_locations(active)
+	local payload = {
+		tick = game and game.tick or -1,
+		scenario_id = active and active.scenario and active.scenario.id or "unknown",
+		locations = {},
+		totals = {},
+	}
+	if active == nil then
+		return payload
+	end
+
+	local included_types = {
+		["inserter"] = true,
+		["transport-belt"] = true,
+		["underground-belt"] = true,
+		["splitter"] = true,
+	}
+
+	for entity_id, entity in pairs(active.placed_entities or {}) do
+		if entity and entity.valid then
+			local is_ref_entity = (entity_id == "source_chest" or entity_id == "sink_chest")
+			if is_ref_entity or included_types[entity.type] then
+				local snapshot = entity_item_snapshot(entity, entity_id)
+				if snapshot ~= nil then
+					local location_id = string.format("%s@(%0.2f,%0.2f)", entity_id, entity.position.x, entity.position.y)
+					payload.locations[location_id] = snapshot
+					for item_name, count in pairs(snapshot.counts) do
+						add_item_counts(payload.totals, item_name, count)
+					end
+				end
+			end
+		end
+	end
+
+	local mine_inventory_counts = inventory_item_counts(active.inventory)
+	if next(mine_inventory_counts) ~= nil then
+		payload.locations["mine_inventory"] = {
+			entity_id = "mine_inventory",
+			name = "mine_inventory",
+			type = "script-inventory",
+			counts = mine_inventory_counts,
+		}
+		for item_name, count in pairs(mine_inventory_counts) do
+			add_item_counts(payload.totals, item_name, count)
+		end
+	end
+
+	return payload
+end
+
 local function build_name_filter_lookup(item_names)
 	if type(item_names) ~= "table" then
 		return nil
@@ -1203,6 +1351,20 @@ function M.apply_action(active, action, call_main_mod)
 		call_main_mod("run_full_scan")
 	elseif action.type == "set_test_overrides" then
 		call_main_mod("set_test_overrides", action.overrides)
+	elseif action.type == "scan_item_locations" then
+		local payload = M.scan_chain_item_locations(active)
+		if action.debug_log == true then
+			log("[PBE-HARNESS] chain-item-scan " .. helpers.table_to_json(payload))
+		end
+		local output_file = action.output_file
+		if type(action.output_file_pattern) == "string" and action.output_file_pattern ~= "" then
+			output_file = action.output_file_pattern
+			output_file = string.gsub(output_file, "{tick}", tostring(payload.tick))
+			output_file = string.gsub(output_file, "{scenario}", tostring(payload.scenario_id))
+		end
+		if type(output_file) == "string" and output_file ~= "" then
+			helpers.write_file(output_file, helpers.table_to_json(payload), false)
+		end
 	end
 end
 

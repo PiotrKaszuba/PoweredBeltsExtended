@@ -99,6 +99,17 @@ local function sort_by_tick(entries)
 	return entries
 end
 
+local function append_actions(base_actions, extra_actions)
+	local actions = {}
+	for _, action in ipairs(base_actions or {}) do
+		actions[#actions + 1] = deep_copy(action)
+	end
+	for _, action in ipairs(extra_actions or {}) do
+		actions[#actions + 1] = deep_copy(action)
+	end
+	return actions
+end
+
 local function ensure_harness_storage()
 	if storage.harness == nil then
 		storage.harness = {}
@@ -440,12 +451,16 @@ local function start_scenario(scenario, setup_options)
 		source_baseline_fingerprint = {},
 		expected_contents = {},
 		inventory = mine_inventory,
+		action_history = {},
 	}
+	active.scenario.actions = append_actions(active.scenario.actions or {}, setup_options and setup_options.extra_actions or nil)
 	active.scenario.actions = sort_by_tick(active.scenario.actions or {})
 	active.scenario.checkpoints = sort_by_tick(active.scenario.checkpoints or {})
 
 	while active.next_action_idx <= #active.scenario.actions and (active.scenario.actions[active.next_action_idx].tick or 0) <= 0 do
-		world.apply_action(active, active.scenario.actions[active.next_action_idx], call_main_mod)
+		local action = active.scenario.actions[active.next_action_idx]
+		world.apply_action(active, action, call_main_mod)
+		active.action_history[#active.action_history + 1] = {tick = 0, action = deep_copy(action)}
 		active.next_action_idx = active.next_action_idx + 1
 	end
 
@@ -485,6 +500,7 @@ local function run_active_scenario_tick()
 		-- game.print(string.format("[PBE-HARNESS] applying action %s at tick %d", active.scenario.actions[active.next_action_idx].type, active.scenario.actions[active.next_action_idx].tick))
 		if (action.tick or 0) > elapsed then break end
 		world.apply_action(active, action, call_main_mod)
+		active.action_history[#active.action_history + 1] = {tick = elapsed, action = deep_copy(action)}
 		active.next_action_idx = active.next_action_idx + 1
 	end
 
@@ -565,6 +581,14 @@ function M.on_tick(_event)
 	run_active_scenario_tick()
 	start_next_scenario_if_needed()
 	log_tick_heartbeat()
+end
+
+function M.get_scenario_definition(id)
+	local scenario = scenarios.find_by_id(id)
+	if scenario == nil then
+		return nil
+	end
+	return deep_copy(scenario)
 end
 
 function M.run_scenario(id)
@@ -681,6 +705,7 @@ function M.prepare_scenario_setup(id, save_name, setup_options)
 		pause = true,
 		save_snapshot = true,
 		researched_technologies = nil,
+		extra_actions = nil,
 		build_order_mode = positional_mode,
 		build_order_seed = positional_seed,
 	}
@@ -692,6 +717,9 @@ function M.prepare_scenario_setup(id, save_name, setup_options)
 			options.pause = false
 		end
 		options.researched_technologies = setup_options.researched_technologies
+		if type(setup_options.extra_actions) == "table" then
+			options.extra_actions = setup_options.extra_actions
+		end
 		if setup_options.build_order_mode ~= nil then
 			options.build_order_mode = setup_options.build_order_mode
 		end
@@ -704,6 +732,44 @@ function M.prepare_scenario_setup(id, save_name, setup_options)
 		end
 	end
 	return setup_scenario_state(id, save_name, options)
+end
+
+function M.add_action_to_active_scenario(action)
+	local harness = ensure_harness_storage()
+	if harness.active == nil then
+		return {ok = false, error = "No active scenario"}
+	end
+	if type(action) ~= "table" then
+		return {ok = false, error = "Action must be a table"}
+	end
+	harness.active.scenario.actions[#harness.active.scenario.actions + 1] = deep_copy(action)
+	harness.active.scenario.actions = sort_by_tick(harness.active.scenario.actions)
+	if harness.active.next_action_idx < 1 then
+		harness.active.next_action_idx = 1
+	end
+	return {ok = true, action_count = #harness.active.scenario.actions}
+end
+
+function M.run_item_location_scan_now(options)
+	local harness = ensure_harness_storage()
+	if harness.active == nil then
+		return {ok = false, error = "No active scenario"}
+	end
+	local action = {
+		type = "scan_item_locations",
+		debug_log = options ~= nil and options.debug_log == true,
+		output_file = options and options.output_file or nil,
+	}
+	world.apply_action(harness.active, action, call_main_mod)
+	return {ok = true, tick = game.tick}
+end
+
+function M.get_active_action_history()
+	local harness = ensure_harness_storage()
+	if harness.active == nil then
+		return {}
+	end
+	return deep_copy(harness.active.action_history or {})
 end
 
 function M.set_build_order(mode, seed)
