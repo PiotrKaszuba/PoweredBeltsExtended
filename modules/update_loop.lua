@@ -3,35 +3,9 @@ local entities = require("modules.entities")
 local undergrounds = require("modules.undergrounds")
 local migrations = require("modules.migrations")
 
+local tests, tests_loaded = utils.optional_require("modules.tests")
+
 local update_loop = {}
-
-local function should_probe_update_iteration_tick()
-	local overrides = storage.test_overrides
-	local probe_ticks = overrides and overrides.update_iteration_probe_ticks
-	return probe_ticks ~= nil and probe_ticks[game.tick] == true
-end
-
-local function maybe_probe_update_iteration(phase, surface_key, entity_key, entity)
-	if not should_probe_update_iteration_tick() then
-		return
-	end
-	if not (remote.interfaces and remote.interfaces.pbe_integration_harness and remote.interfaces.pbe_integration_harness.record_update_loop_iteration_probe) then
-		return
-	end
-	local position = nil
-	if entity ~= nil and entity.valid and entity.position ~= nil then
-		position = {x = entity.position.x, y = entity.position.y}
-	end
-	remote.call("pbe_integration_harness", "record_update_loop_iteration_probe", {
-		phase = phase,
-		tick = game.tick,
-		surface = surface_key,
-		entity_key = entity_key,
-		entity_name = entity and entity.valid and entity.name or nil,
-		entity_type = entity and entity.valid and entity.type or nil,
-		position = position,
-	})
-end
 
 local function get_next_power_entity_iterator()
 	local current_surface_key = storage.tick_surface_iterator_key
@@ -101,7 +75,7 @@ function update_loop.on_tick(event)
 			local entities_by_surface = storage.entities[surface_key]
 			local power_entities_by_surface = storage.power_entities[surface_key]
 			local entity = entities_by_surface and entities_by_surface[entity_key] or nil
-			maybe_probe_update_iteration("before", surface_key, entity_key, entity)
+			if tests_loaded then tests.maybe_probe_update_iteration("before", surface_key, entity_key, entity) end
 			if surface == nil then
 				storage.entities[surface_key] = nil
 				storage.power_entities[surface_key] = nil
@@ -110,7 +84,7 @@ function update_loop.on_tick(event)
 			elseif power_entities_by_surface ~= nil and power_entities_by_surface[entity_key] ~= nil then
 				undergrounds.run_for_entity(entity, surface, entity_key, true, undergrounds.underground_length(entity), false, false)
 			end
-			maybe_probe_update_iteration("after", surface_key, entity_key, entity)
+			if tests_loaded then tests.maybe_probe_update_iteration("after", surface_key, entity_key, entity) end
 			if storage.power_entities[surface_key] ~= nil and storage.power_entities[surface_key][entity_key] ~= nil then
 				storage.tick_surface_iterator_key = surface_key
 				storage.tick_iterator_key = entity_key

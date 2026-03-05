@@ -28,6 +28,27 @@ function string:startswith(prefix)
     return self:sub(1, #prefix) == prefix
 end
 
+function utils.optional_require(module_name, fallback_value)
+	if type(module_name) ~= "string" or module_name == "" then
+		error("optional_require: module_name must be a non-empty string")
+	end
+
+	local ok, module_or_error = pcall(require, module_name)
+	if ok then
+		return module_or_error, true
+	end
+
+	local missing_module_pattern = "module '" .. module_name .. "' not found"
+	if string.find(tostring(module_or_error), missing_module_pattern, 1, true) then
+		if fallback_value ~= nil then
+			return fallback_value, false
+		end
+		return {}, false
+	end
+
+	error(module_or_error)
+end
+
 function utils.get_surface_key(surface)
 	if not surface then
 		return nil

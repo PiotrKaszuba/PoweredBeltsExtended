@@ -41,4 +41,32 @@ function tests.register_test_api()
 	end
 end
 
+function tests.should_probe_update_iteration_tick()
+	local overrides = storage.test_overrides
+	local probe_ticks = overrides and overrides.update_iteration_probe_ticks
+	return probe_ticks ~= nil and probe_ticks[game.tick] == true
+end
+
+function tests.maybe_probe_update_iteration(phase, surface_key, entity_key, entity)
+	if not tests.should_probe_update_iteration_tick() then
+		return
+	end
+	if not (remote.interfaces and remote.interfaces.pbe_integration_harness and remote.interfaces.pbe_integration_harness.record_update_loop_iteration_probe) then
+		return
+	end
+	local position = nil
+	if entity ~= nil and entity.valid and entity.position ~= nil then
+		position = {x = entity.position.x, y = entity.position.y}
+	end
+	remote.call("pbe_integration_harness", "record_update_loop_iteration_probe", {
+		phase = phase,
+		tick = game.tick,
+		surface = surface_key,
+		entity_key = entity_key,
+		entity_name = entity and entity.valid and entity.name or nil,
+		entity_type = entity and entity.valid and entity.type or nil,
+		position = position,
+	})
+end
+
 return tests

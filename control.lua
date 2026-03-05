@@ -5,7 +5,6 @@ local migrations = require("modules.migrations")
 local event_handlers = require("modules.event_handlers")
 local update_loop = require("modules.update_loop")
 local stats = require("modules.stats")
-local tests = require("modules.tests")
 
 script.on_init(function()
 	migrations.init_globals()
@@ -37,11 +36,15 @@ script.on_event({
 script.on_event(defines.events.on_tick, update_loop.on_tick)
 script.on_event({defines.events.on_research_finished}, forces.tech_check)
 commands.add_command("PBE_CheckPowerEntities", "Checks and cleans power entities on all surfaces", scans.find_all_power_entities)
-remote.add_interface("powered_belts_extended", {
+local tests, tests_loaded = utils.optional_require("modules.tests")
+local remote_interface = {
 	get_storage = function() return storage end,
 	run_full_scan = scans.run_full_scan,
 	get_state_snapshot = stats.get_state_snapshot,
-	set_test_overrides = tests.set_test_overrides,
-})
+}
+if tests_loaded then
+	remote_interface.set_test_overrides = tests.set_test_overrides
+end
+remote.add_interface("powered_belts_extended", remote_interface)
 
-tests.register_test_api()
+if tests_loaded then tests.register_test_api() end
