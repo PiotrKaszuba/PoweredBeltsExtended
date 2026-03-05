@@ -111,7 +111,7 @@ layouts.get_layout_skeleton = function(
     }
     for i = 1, input_belt_num do
         table.insert(layout.entities, {
-            id = "belt_" .. i,
+            id = "input_belt_" .. i,
             name = "transport-belt",
             position = {
                 x = x_belt_start + (i - 1),
@@ -122,7 +122,7 @@ layouts.get_layout_skeleton = function(
     end
     for i = 1, output_belt_num do
         table.insert(layout.entities, {
-            id = "belt_" .. i,
+            id = "output_belt_" .. i,
             name = "transport-belt",
             position = {
                 x = x_output_belt_end - (i - 1),

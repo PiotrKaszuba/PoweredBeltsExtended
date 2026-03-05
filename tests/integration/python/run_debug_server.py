@@ -263,6 +263,7 @@ def main() -> int:
     print(f"Console log: {console_log_path}")
     print("Press Ctrl+C to stop the server.")
 
+    # not using PIPE because it blocks RCON from connecting
     process = subprocess.Popen(cmd)
     try:
         if not args.no_initial_reset:

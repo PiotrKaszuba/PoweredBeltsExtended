@@ -599,9 +599,20 @@ function M.get_referenced_inventories(active, reference_name)
 	return inventories
 end
 
+local function normalize_inventory_collection(inventories)
+	if inventories == nil then
+		return {}
+	end
+	if type(inventories) == "table" then
+		return inventories
+	end
+	-- Accept a single LuaInventory userdata (e.g. active.inventory).
+	return {inventories}
+end
+
 function M.aggregate_inventory_contents(inventories)
 	local totals = {}
-	for _, inventory in ipairs(inventories or {}) do
+	for _, inventory in ipairs(normalize_inventory_collection(inventories)) do
 		local ok, contents = pcall(function()
 			return inventory.get_contents()
 		end)
@@ -617,7 +628,7 @@ end
 
 function M.aggregate_inventory_total_count(inventories, item_name)
 	local total = 0
-	for _, inventory in ipairs(inventories or {}) do
+	for _, inventory in ipairs(normalize_inventory_collection(inventories)) do
 		local ok, count = pcall(function()
 			if item_name ~= nil then
 				return inventory.get_item_count(item_name)
@@ -633,13 +644,313 @@ end
 
 function M.aggregate_inventory_fingerprint(inventories)
 	local combined = {}
-	for _, inventory in ipairs(inventories or {}) do
+	for _, inventory in ipairs(normalize_inventory_collection(inventories)) do
 		local fingerprint = M.inventory_fingerprint(inventory)
 		for signature, count in pairs(fingerprint) do
 			combined[signature] = (combined[signature] or 0) + count
 		end
 	end
 	return combined
+end
+
+local function add_item_counts(target, item_name, count)
+	if type(item_name) ~= "string" or item_name == "" then
+		return
+	end
+	if type(count) ~= "number" or count == 0 then
+		return
+	end
+	target[item_name] = (target[item_name] or 0) + count
+end
+
+local function inventory_item_counts(inventory)
+	if inventory == nil then
+		return {}
+	end
+	local ok, contents = pcall(function()
+		return inventory.get_contents()
+	end)
+	if not ok or contents == nil then
+		return {}
+	end
+	return M.contents_to_name_count_map(contents)
+end
+
+local function collect_transport_line_counts(entity, entry)
+	if not (entity and entity.valid) then
+		return
+	end
+	local max_line_index = 0
+	local ok_max, max_line = pcall(function()
+		return entity.get_max_transport_line_index()
+	end)
+	if ok_max and type(max_line) == "number" then
+		max_line_index = max_line
+	end
+	if max_line_index <= 0 then
+		return
+	end
+
+	entry.transport_lines = {}
+	for line_index = 1, max_line_index do
+		local ok_line, line = pcall(function()
+			return entity.get_transport_line(line_index)
+		end)
+		if ok_line and line ~= nil then
+			local counts = {}
+			local had_detailed = false
+			local ok_detailed, detailed_contents = pcall(function()
+				return line.get_detailed_contents()
+			end)
+			if ok_detailed and type(detailed_contents) == "table" then
+				had_detailed = true
+				for _, detailed_item in pairs(detailed_contents) do
+					local stack = detailed_item and detailed_item.stack or nil
+					if stack and stack.valid_for_read then
+						add_item_counts(counts, stack.name, stack.count or 0)
+						add_item_counts(entry.counts, stack.name, stack.count or 0)
+					elseif type(detailed_item) == "table" and detailed_item.name ~= nil then
+						add_item_counts(counts, detailed_item.name, detailed_item.count or 0)
+						add_item_counts(entry.counts, detailed_item.name, detailed_item.count or 0)
+					end
+				end
+			end
+			if not had_detailed then
+				local ok_contents, line_contents = pcall(function()
+					return line.get_contents()
+				end)
+				if ok_contents and type(line_contents) == "table" then
+					local normalized = M.contents_to_name_count_map(line_contents)
+					for item_name, count in pairs(normalized) do
+						add_item_counts(counts, item_name, count)
+						add_item_counts(entry.counts, item_name, count)
+					end
+				end
+			end
+			entry.transport_lines[tostring(line_index)] = counts
+		end
+	end
+end
+
+local function collect_inserter_hand_counts(entity, entry)
+	if not (entity and entity.valid and entity.type == "inserter") then
+		return
+	end
+	local held_stack = entity.held_stack
+	if held_stack ~= nil and held_stack.valid_for_read then
+		add_item_counts(entry.counts, held_stack.name, held_stack.count or 0)
+		entry.hand = {
+			name = held_stack.name,
+			count = held_stack.count or 0,
+		}
+	end
+end
+
+local function entity_item_snapshot(entity, entity_id)
+	if not (entity and entity.valid) then
+		return nil
+	end
+	local entry = {
+		entity_id = entity_id,
+		name = entity.name,
+		type = entity.type,
+		position = {x = entity.position.x, y = entity.position.y},
+		counts = {},
+	}
+	if entity.name == "item-on-ground" and entity.stack ~= nil and entity.stack.valid_for_read then
+		add_item_counts(entry.counts, entity.stack.name, entity.stack.count or 0)
+		entry.ground_stack = {
+			name = entity.stack.name,
+			count = entity.stack.count or 0,
+		}
+	end
+	local inventory = M.resolve_inventory(entity)
+	if inventory ~= nil then
+		for item_name, count in pairs(inventory_item_counts(inventory)) do
+			add_item_counts(entry.counts, item_name, count)
+		end
+	end
+	collect_inserter_hand_counts(entity, entry)
+	collect_transport_line_counts(entity, entry)
+	if next(entry.counts) == nil then
+		return nil
+	end
+	return entry
+end
+
+local function entity_scan_key(entity)
+	if not (entity and entity.valid) then
+		return nil
+	end
+	if entity.unit_number ~= nil then
+		return "unit:" .. tostring(entity.unit_number)
+	end
+	return string.format("%s@(%0.4f,%0.4f)", tostring(entity.name), entity.position.x, entity.position.y)
+end
+
+local function append_snapshot(payload, seen_entities, entity_id, entity, debug, source_tag)
+	if not (entity and entity.valid) then
+		if debug ~= nil then
+			debug.invalid_candidates = (debug.invalid_candidates or 0) + 1
+		end
+		return false
+	end
+	local key = entity_scan_key(entity)
+	if key ~= nil and seen_entities[key] then
+		if debug ~= nil then
+			debug.duplicate_candidates = (debug.duplicate_candidates or 0) + 1
+		end
+		return false
+	end
+	local snapshot = entity_item_snapshot(entity, entity_id)
+	if snapshot == nil then
+		if debug ~= nil then
+			debug.empty_candidates = (debug.empty_candidates or 0) + 1
+			if #debug.empty_candidate_samples < 20 then
+				debug.empty_candidate_samples[#debug.empty_candidate_samples + 1] = {
+					source = source_tag,
+					entity_id = entity_id,
+					name = entity.name,
+					type = entity.type,
+					position = {x = entity.position.x, y = entity.position.y},
+				}
+			end
+		end
+		return false
+	end
+	local location_id = string.format("%s@(%0.2f,%0.2f)", entity_id, entity.position.x, entity.position.y)
+	payload.locations[location_id] = snapshot
+	for item_name, count in pairs(snapshot.counts) do
+		add_item_counts(payload.totals, item_name, count)
+	end
+	if key ~= nil then
+		seen_entities[key] = true
+	end
+	if debug ~= nil then
+		if source_tag == "reference" then
+			debug.included_from_references = (debug.included_from_references or 0) + 1
+		elseif source_tag == "surface" then
+			debug.included_from_surface_scan = (debug.included_from_surface_scan or 0) + 1
+		end
+	end
+	return true
+end
+
+local function nearby_entities_at_layout_position(active, position)
+	if not (active and active.surface and active.surface.valid and type(position) == "table") then
+		return {}
+	end
+	local entities = active.surface.find_entities_filtered{position = position, radius = 1.5} or {}
+	local out = {}
+	for _, entity in pairs(entities) do
+		if entity and entity.valid then
+			out[#out + 1] = {
+				name = entity.name,
+				type = entity.type,
+				position = {x = entity.position.x, y = entity.position.y},
+			}
+		end
+	end
+	return out
+end
+
+function M.scan_chain_item_locations(active, options)
+	local payload = {
+		tick = game and game.tick or -1,
+		scenario_id = active and active.scenario and active.scenario.id or "unknown",
+		locations = {},
+		totals = {},
+	}
+	local debug_enabled = type(options) == "table" and options.debug == true
+	local debug = nil
+	if debug_enabled then
+		debug = {
+			placed_entities_total = 0,
+			placed_entities_valid = 0,
+			resolution_attempts = 0,
+			resolution_successes = 0,
+			resolution_failures = 0,
+			resolution_failure_samples = {},
+			included_from_references = 0,
+			included_from_surface_scan = 0,
+			empty_candidates = 0,
+			empty_candidate_samples = {},
+			duplicate_candidates = 0,
+			invalid_candidates = 0,
+			surface_scan_candidates = 0,
+		}
+		payload.debug = debug
+	end
+	if active == nil then
+		return payload
+	end
+
+	local seen_entities = {}
+
+	for entity_id, entity in pairs(active.placed_entities or {}) do
+		if debug ~= nil then
+			debug.placed_entities_total = debug.placed_entities_total + 1
+		end
+		if entity ~= nil and (not entity.valid) then
+			if debug ~= nil then
+				debug.resolution_attempts = debug.resolution_attempts + 1
+			end
+			entity = resolve_current_entity(active, entity_id)
+			active.placed_entities[entity_id] = entity
+			if debug ~= nil then
+				if entity ~= nil and entity.valid then
+					debug.resolution_successes = debug.resolution_successes + 1
+				else
+					debug.resolution_failures = debug.resolution_failures + 1
+					if #debug.resolution_failure_samples < 20 then
+						local entry = {entity_id = entity_id}
+						local expected = get_layout_entity_definition(active, entity_id)
+						if expected ~= nil then
+							entry.expected_name = expected.name
+							entry.expected_type = expected.type
+							entry.expected_position = expected.position
+							entry.nearby_entities = nearby_entities_at_layout_position(active, expected.position)
+						end
+						debug.resolution_failure_samples[#debug.resolution_failure_samples + 1] = entry
+					end
+				end
+			end
+		end
+		if entity and entity.valid then
+			if debug ~= nil then
+				debug.placed_entities_valid = debug.placed_entities_valid + 1
+			end
+			append_snapshot(payload, seen_entities, entity_id, entity, debug, "reference")
+		end
+	end
+
+	if active.surface and active.surface.valid then
+		local query = {}
+		if active.layout and active.layout.area then
+			query.area = active.layout.area
+		end
+		for _, entity in pairs(active.surface.find_entities_filtered(query) or {}) do
+			if debug ~= nil then
+				debug.surface_scan_candidates = debug.surface_scan_candidates + 1
+			end
+			append_snapshot(payload, seen_entities, "world_entity", entity, debug, "surface")
+		end
+	end
+
+	local mine_inventory_counts = inventory_item_counts(active.inventory)
+	if next(mine_inventory_counts) ~= nil then
+		payload.locations["mine_inventory"] = {
+			entity_id = "mine_inventory",
+			name = "mine_inventory",
+			type = "script-inventory",
+			counts = mine_inventory_counts,
+		}
+		for item_name, count in pairs(mine_inventory_counts) do
+			add_item_counts(payload.totals, item_name, count)
+		end
+	end
+
+	return payload
 end
 
 local function build_name_filter_lookup(item_names)
@@ -1203,6 +1514,20 @@ function M.apply_action(active, action, call_main_mod)
 		call_main_mod("run_full_scan")
 	elseif action.type == "set_test_overrides" then
 		call_main_mod("set_test_overrides", action.overrides)
+	elseif action.type == "scan_item_locations" then
+		local payload = M.scan_chain_item_locations(active, {debug = action.debug_log == true})
+		if action.debug_log == true then
+			log("[PBE-HARNESS] chain-item-scan " .. helpers.table_to_json(payload))
+		end
+		local output_file = action.output_file
+		if type(action.output_file_pattern) == "string" and action.output_file_pattern ~= "" then
+			output_file = action.output_file_pattern
+			output_file = string.gsub(output_file, "{tick}", tostring(payload.tick))
+			output_file = string.gsub(output_file, "{scenario}", tostring(payload.scenario_id))
+		end
+		if type(output_file) == "string" and output_file ~= "" then
+			helpers.write_file(output_file, helpers.table_to_json(payload), false)
+		end
 	end
 end
 

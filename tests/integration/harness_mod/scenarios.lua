@@ -102,7 +102,7 @@ local function make_transfer_scenario(base)
 end
 
 local function make_planner_state_outage_scenario(base)
-	local refs = base.target_refs or {"belt_2", "underground_input", "line_splitter"}
+	local refs = base.target_refs or {"input_belt_2", "underground_input", "line_splitter"}
 	local mark_action = {}
 	for key, value in pairs(base.mark_action or {}) do
 		mark_action[key] = value
@@ -655,16 +655,16 @@ local function default_scenarios()
 			id = "planner_deconstruction_outage_persistence",
 			assertion_type = "entities_marked_for_deconstruction",
 			include_ground_items = true,
-			target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
+			target_refs = {"input_belt_2", "underground_input", "underground_output", "line_splitter"},
 			mark_action = {
 				type = "order_deconstruction",
-				target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
+				target_refs = {"input_belt_2", "underground_input", "underground_output", "line_splitter"},
 			},
 			extra_actions = {
 				{
 					tick = 640,
 					type = "cancel_deconstruction",
-					target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
+					target_refs = {"input_belt_2", "underground_input", "underground_output", "line_splitter"},
 				},
 			},
 		},
@@ -672,9 +672,9 @@ local function default_scenarios()
 			id = "planner_upgrade_outage_persistence",
 			assertion_type = "entities_marked_for_upgrade",
 			include_ground_items = true,
-			target_refs = {"belt_2", "underground_input", "underground_output", "line_splitter"},
+			target_refs = {"input_belt_2", "underground_input", "underground_output", "line_splitter"},
 			expected_targets = {
-				belt_2 = "fast-transport-belt",
+				input_belt_2 = "fast-transport-belt",
 				underground_input = "fast-underground-belt",
 				underground_output = "fast-underground-belt",
 				line_splitter = "fast-splitter",
@@ -682,7 +682,7 @@ local function default_scenarios()
 			mark_action = {
 				type = "order_upgrade",
 				orders = {
-					{target_ref = "belt_2", target_name = "fast-transport-belt"},
+					{target_ref = "input_belt_2", target_name = "fast-transport-belt"},
 					{target_ref = "underground_input", target_name = "fast-underground-belt"},
 					{target_ref = "underground_output", target_name = "fast-underground-belt"},
 					{target_ref = "line_splitter", target_name = "fast-splitter"},

@@ -39,6 +39,29 @@ Run-mode strategy and troubleshooting notes:
 
 1. `tests/integration/RUN_MODES.md`
 
+
+## Item Chain Scan / Disappearance Diagnosis
+
+You can inject an item-chain scan action into a scenario.
+The action type is `scan_item_locations` and supports:
+
+- `debug_log` (`true/false`): print structured scan payload to Factorio logs.
+- `output_file` (`string`): write JSON payload into `script-output/<name>`.
+- `output_file_pattern` (`string`): template with `{tick}` and `{scenario}` placeholders.
+
+A dedicated diagnosis runner can execute a single scenario, inject scans at 0%, 10%..100%, and iteratively bisect loss intervals:
+
+```bash
+python -m tests.integration.python.run_single_disappearance_diagnosis <scenario_id>
+```
+
+Outputs:
+
+- `tests/artifacts/item-disappearance-analysis-<scenario_id>.json`
+- `tests/artifacts/item-disappearance-analysis-<scenario_id>.txt`
+
+The JSON includes per-run sampled ticks, loss intervals, exact disappearance ticks (when identified), per-location loss deltas, and nearby non-scan test actions.
+
 ## Run Debug Server (GUI Connect)
 
 PowerShell:
