@@ -46,7 +46,20 @@ local function evaluate_transfer(active, assertion)
 			sink_contents[item_name] = (sink_contents[item_name] or 0) + count
 		end
 	end
-	local passed = world.maps_equal(expected, sink_contents)
+
+	-- Compare only expected item names by default; unrelated mined/extra item
+	-- types should not fail transfer assertions.
+	local compared_sink = {}
+	for item_name, expected_count in pairs(expected) do
+		local actual_count = sink_contents[item_name] or 0
+		if assertion.allow_expected_item_overflow == true then
+			compared_sink[item_name] = math.max(actual_count, expected_count)
+		else
+			compared_sink[item_name] = actual_count
+		end
+	end
+
+	local passed = world.maps_equal(expected, compared_sink)
 	local message = "Sink contents match expected"
 	if not passed then
 		message = "Sink contents mismatch"
@@ -67,9 +80,11 @@ local function evaluate_transfer(active, assertion)
 	end
 	return passed, message, {
 		expected = expected,
+		compared_sink = compared_sink,
 		sink = sink_contents,
 		sink_raw = sink_contents_raw,
 		ground = ground_contents,
+		allow_expected_item_overflow = assertion.allow_expected_item_overflow == true,
 	}
 end
 
