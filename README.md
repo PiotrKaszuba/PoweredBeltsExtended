@@ -92,6 +92,8 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
   How many belt power entities are processed each tick.
 - `powered-belts-required-energy-percentage` (default `50`, min `0`, max `100`)
   Percentage of each entity energy buffer that must be available for it to stay powered.
+- `powered-belts-print-underground-spillage` (default `true`)
+  Prints `[PBE]` chat messages when underground fallback handling spills items.
 
 
 ---

@@ -38,8 +38,10 @@ function utils.optional_require(module_name, fallback_value)
 		return module_or_error, true
 	end
 
-	local missing_module_pattern = "module '" .. module_name .. "' not found"
-	if string.find(tostring(module_or_error), missing_module_pattern, 1, true) then
+	local error_text = tostring(module_or_error)
+	local missing_module_pattern_quoted = "module '" .. module_name .. "' not found"
+	local missing_module_pattern_plain = "module " .. module_name .. " not found"
+	if string.find(error_text, missing_module_pattern_quoted, 1, true) or string.find(error_text, missing_module_pattern_plain, 1, true) then
 		if fallback_value ~= nil then
 			return fallback_value, false
 		end
@@ -268,6 +270,14 @@ function utils.get_operations_per_tick_setting()
 		return math.max(1, math.floor(setting.value))
 	end
 	return 16
+end
+
+function utils.get_print_underground_spillage_setting()
+	local setting = settings.global["powered-belts-print-underground-spillage"]
+	if setting ~= nil then
+		return setting.value ~= false
+	end
+	return true
 end
 
 function utils.get_item_name_for_stats(item)

@@ -34,6 +34,13 @@ data:extend({
         order = "a"
     },
     {
+        type = "bool-setting",
+        name = "powered-belts-print-underground-spillage",
+        setting_type = "runtime-global",
+        default_value = true,
+        order = "a"
+    },
+    {
         type = "string-setting",
         name = "powered-belts-underground-item-transfer-mode",
         setting_type = "runtime-global",

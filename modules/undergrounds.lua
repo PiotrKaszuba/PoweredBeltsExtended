@@ -266,7 +266,6 @@ function undergrounds.fill_lane(underground, lane_idx, items, positions, startin
 		
 		undergrounds.add_count(storage.spilled_items, '_total', c)
 		
-		game.print("[PBE] Spilled " .. c .. " items at  x=" .. underground.position.x .. ", y=" .. underground.position.y .. ": ")
 		for k, v in pairs(grouped_spills) do
 			underground.surface.spill_item_stack{
 				position = underground.position,
@@ -276,7 +275,11 @@ function undergrounds.fill_lane(underground, lane_idx, items, positions, startin
 				allow_belts = false
 			}
 		end
-		game.print("[PBE] " .. undergrounds.collection_to_string(counts))
+		
+		if utils.get_print_underground_spillage_setting() then
+			game.print("[PBE] Spilled " .. c .. " items at  x=" .. underground.position.x .. ", y=" .. underground.position.y .. ": ")
+			game.print("[PBE] " .. undergrounds.collection_to_string(counts))
+		end
 	end
 	undergrounds.add_count(storage.saved_items, '_total', inserted + c)
 end
