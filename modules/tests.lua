@@ -18,6 +18,14 @@ function tests.set_test_overrides(overrides)
 	if type(overrides.operations_per_tick) == "number" then
 		sanitized.operations_per_tick = math.max(1, math.floor(overrides.operations_per_tick))
 	end
+	if type(overrides.update_iteration_probe_ticks) == "table" then
+		sanitized.update_iteration_probe_ticks = {}
+		for _, tick in pairs(overrides.update_iteration_probe_ticks) do
+			if type(tick) == "number" then
+				sanitized.update_iteration_probe_ticks[math.floor(tick)] = true
+			end
+		end
+	end
 
 	storage.test_overrides = sanitized
 	return storage.test_overrides

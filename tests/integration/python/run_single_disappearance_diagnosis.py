@@ -33,6 +33,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--powered-belts-enabled", choices=("true", "false"), default="true")
     parser.add_argument("--remove-runtime-dir-on-exit", choices=("true", "false"), default="true")
     parser.add_argument("--max-refinement-runs", type=int, default=6)
+    parser.add_argument(
+        "--update-loop-debug-ticks",
+        nargs="+",
+        type=int,
+        default=None,
+        help="Exact elapsed scenario ticks to capture per-iteration update-loop probes.",
+    )
     return parser.parse_args()
 
 
@@ -387,6 +394,66 @@ def _scenario_log(scenario_id: str, message: str) -> None:
     _log_step(f"{scenario_id}: {message}")
 
 
+def _build_update_loop_probe_summary(report: dict[str, Any] | None, item_filter: set[str] | None) -> dict[str, Any] | None:
+    if not isinstance(report, dict):
+        return None
+    raw_iterations = report.get("iterations")
+    if not isinstance(raw_iterations, list):
+        return {"ticks": report.get("ticks") or [], "iterations": [], "loss_events": []}
+
+    iterations: list[dict[str, Any]] = []
+    loss_events: list[dict[str, Any]] = []
+    by_pair: dict[tuple[int, str, str], dict[str, Any]] = {}
+
+    for raw in raw_iterations:
+        if not isinstance(raw, dict):
+            continue
+        phase = str(raw.get("phase") or "")
+        scan = raw.get("scan") if isinstance(raw.get("scan"), dict) else {}
+        totals = _sum_totals(scan, item_filter)
+        entry = {
+            "phase": phase,
+            "tick": int(raw.get("tick") or -1),
+            "surface": raw.get("surface"),
+            "entity_key": raw.get("entity_key"),
+            "entity_name": raw.get("entity_name"),
+            "entity_type": raw.get("entity_type"),
+            "position": raw.get("position"),
+            "totals": totals,
+        }
+        iterations.append(entry)
+
+        pair_key = (entry["tick"], str(entry.get("surface")), str(entry.get("entity_key")))
+        pair = by_pair.setdefault(pair_key, {})
+        pair[phase] = entry
+        pair["entity_name"] = entry.get("entity_name")
+        pair["entity_key"] = entry.get("entity_key")
+        pair["surface"] = entry.get("surface")
+
+    for pair_key, pair in by_pair.items():
+        before = pair.get("before")
+        after = pair.get("after")
+        if not before or not after:
+            continue
+        loss = _compute_loss(before.get("totals", {}), after.get("totals", {}))
+        if loss:
+            loss_events.append(
+                {
+                    "tick": pair_key[0],
+                    "surface": pair.get("surface"),
+                    "entity_key": pair.get("entity_key"),
+                    "entity_name": pair.get("entity_name"),
+                    "loss": loss,
+                }
+            )
+
+    return {
+        "ticks": sorted({int(t) for t in (report.get("ticks") or []) if isinstance(t, int)}),
+        "iterations": iterations,
+        "loss_events": sorted(loss_events, key=lambda e: (e["tick"], str(e.get("entity_key")))),
+    }
+
+
 def _list_scenario_ids(client) -> list[str]:
     raw = _send_json_command(client, 'remote.call("pbe_integration_harness","list_scenario_ids")')
     if not isinstance(raw, list):
@@ -419,13 +486,25 @@ def _run_diagnosis_for_scenario(
     else:
         _scenario_log(scenario_id, "No source-seeded items detected in tick-0 fill actions; will infer from source snapshot.")
 
-    sampled_ticks: set[int] = set([0, max_tick])
-    for p in range(10, 100, 10):
-        sampled_ticks.add(max(0, int(max_tick * (p / 100.0))))
+    explicit_probe_ticks = None
+    if args.update_loop_debug_ticks:
+        explicit_probe_ticks = sorted({max(0, min(max_tick, int(tick))) for tick in args.update_loop_debug_ticks})
+
+    if explicit_probe_ticks is not None:
+        sampled_ticks: set[int] = set(explicit_probe_ticks)
+        sampled_ticks.add(0)
+        sampled_ticks.add(max_tick)
+        max_runs = 1
+        _scenario_log(scenario_id, f"Using explicit debug ticks; running single pass with ticks={sorted(sampled_ticks)}")
+    else:
+        sampled_ticks = set([0, max_tick])
+        for p in range(10, 100, 10):
+            sampled_ticks.add(max(0, int(max_tick * (p / 100.0))))
+        max_runs = args.max_refinement_runs
     all_sampled_ticks: set[int] = set(sampled_ticks)
 
     run_reports: list[dict[str, Any]] = []
-    for run_idx in range(args.max_refinement_runs):
+    for run_idx in range(max_runs):
         tick_list = sorted(sampled_ticks)
         all_sampled_ticks.update(tick_list)
         _scenario_log(scenario_id, f"Refinement run {run_idx + 1}/{args.max_refinement_runs}: ticks={tick_list}")
@@ -445,6 +524,7 @@ def _run_diagnosis_for_scenario(
             "build_order_mode": args.build_order_mode,
             "build_order_seed": args.build_order_seed,
             "extra_actions": extra_actions,
+            "update_loop_probe_ticks": explicit_probe_ticks,
         }
         _scenario_log(scenario_id, "Preparing scenario setup with scan actions.")
         _send_json_command(client, f'remote.call("pbe_integration_harness","prepare_scenario_setup",{_to_lua(scenario_id)},nil,{_to_lua(options)})')
@@ -480,12 +560,13 @@ def _run_diagnosis_for_scenario(
         run_reports.append({"run": run_idx, "ticks": tick_list, "intervals": intervals})
 
         new_ticks: set[int] = set()
-        for start, end, _loss in intervals:
-            if end - start <= 1:
-                continue
-            for probe_tick in _interval_probe_ticks(start, end, count=10):
-                if probe_tick not in sampled_ticks:
-                    new_ticks.add(probe_tick)
+        if explicit_probe_ticks is None:
+            for start, end, _loss in intervals:
+                if end - start <= 1:
+                    continue
+                for probe_tick in _interval_probe_ticks(start, end, count=10):
+                    if probe_tick not in sampled_ticks:
+                        new_ticks.add(probe_tick)
         if not new_ticks:
             _scenario_log(scenario_id, "No new probe ticks required; refinement complete.")
             final_snapshots = snapshots_by_tick
@@ -533,6 +614,9 @@ def _run_diagnosis_for_scenario(
             }
         )
 
+    scenario_probe_report = (final_scenario or {}).get("update_loop_probe_report") if isinstance(final_scenario, dict) else None
+    update_loop_probe = _build_update_loop_probe_summary(scenario_probe_report, item_filter)
+
     analysis = {
         "scenario_id": scenario_id,
         "max_tick": max_tick,
@@ -543,6 +627,7 @@ def _run_diagnosis_for_scenario(
         "unresolved_loss_intervals": unresolved_loss_intervals,
         "scenario_result": final_scenario,
         "runtime_script_output": str(runtime.script_output_dir),
+        "update_loop_probe": update_loop_probe,
     }
     out_json = artifacts_dir / f"item-disappearance-analysis-{scenario_id}.json"
     out_txt = artifacts_dir / f"item-disappearance-analysis-{scenario_id}.txt"
@@ -570,6 +655,22 @@ def _run_diagnosis_for_scenario(
                 lines.append(f"    - {loc['location']}: {loc['item']} x{loc['count']}")
         _append_nearest_actions_lines(lines, entry.get("nearest_actions") or {}, prefix="  ")
         lines.append("")
+
+    lines.append("Update-loop per-iteration probe:")
+    if update_loop_probe and update_loop_probe.get("ticks"):
+        lines.append(f"  ticks: {update_loop_probe.get('ticks')}")
+        loss_events = update_loop_probe.get("loss_events") or []
+        if not loss_events:
+            lines.append("  loss events: (none)")
+        else:
+            lines.append("  loss events:")
+            for event in loss_events[:40]:
+                lines.append(
+                    f"    - tick {event['tick']} entity={event.get('entity_name') or '?'} key={event.get('entity_key')} missing {_format_loss_items(event['loss'])}"
+                )
+    else:
+        lines.append("  (not enabled)")
+    lines.append("")
 
     lines.append("Unresolved loss intervals:")
     if unresolved_loss_intervals:

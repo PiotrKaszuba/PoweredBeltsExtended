@@ -110,6 +110,23 @@ local function append_actions(base_actions, extra_actions)
 	return actions
 end
 
+local function normalize_probe_ticks(value)
+	if type(value) ~= "table" then
+		return nil
+	end
+	local ticks = {}
+	for _, tick in pairs(value) do
+		if type(tick) == "number" then
+			ticks[#ticks + 1] = math.floor(tick)
+		end
+	end
+	if #ticks == 0 then
+		return nil
+	end
+	table.sort(ticks)
+	return ticks
+end
+
 local function ensure_harness_storage()
 	if storage.harness == nil then
 		storage.harness = {}
@@ -377,6 +394,7 @@ local function summarize_scenario(active)
 		build_order = active.build_order,
 		passed = failed_count == expected_failed_assertions,
 		assertions = active.assertion_results,
+		update_loop_probe_report = deep_copy(active.update_loop_probe_report),
 	}
 end
 
@@ -415,7 +433,18 @@ local function start_scenario(scenario, setup_options)
 	world.clear_area(surface, area)
 	apply_scenario_research(scenario, setup_options)
 
-	call_main_mod("set_test_overrides", scenario.settings_overrides or {})
+	local scenario_start_tick = game.tick
+	local scenario_overrides = deep_copy(scenario.settings_overrides or {})
+	local probe_ticks = normalize_probe_ticks(setup_options and setup_options.update_loop_probe_ticks)
+	local probe_ticks_absolute = nil
+	if probe_ticks ~= nil then
+		probe_ticks_absolute = {}
+		for _, tick in ipairs(probe_ticks) do
+			probe_ticks_absolute[#probe_ticks_absolute + 1] = scenario_start_tick + tick
+		end
+		scenario_overrides.update_iteration_probe_ticks = probe_ticks_absolute
+	end
+	call_main_mod("set_test_overrides", scenario_overrides)
 	local build_order = nil
 	local resolved_build_order, resolved_build_order_error = read_build_order_from_setup_options(setup_options)
 	if resolved_build_order_error ~= nil then
@@ -452,6 +481,12 @@ local function start_scenario(scenario, setup_options)
 		expected_contents = {},
 		inventory = mine_inventory,
 		action_history = {},
+		update_loop_probe_report = probe_ticks and {
+			ticks = probe_ticks,
+			abs_tick_start = scenario_start_tick,
+			abs_ticks = probe_ticks_absolute,
+			iterations = {},
+		} or nil,
 	}
 	active.scenario.actions = append_actions(active.scenario.actions or {}, setup_options and setup_options.extra_actions or nil)
 	active.scenario.actions = sort_by_tick(active.scenario.actions or {})
@@ -706,6 +741,7 @@ function M.prepare_scenario_setup(id, save_name, setup_options)
 		save_snapshot = true,
 		researched_technologies = nil,
 		extra_actions = nil,
+		update_loop_probe_ticks = nil,
 		build_order_mode = positional_mode,
 		build_order_seed = positional_seed,
 	}
@@ -719,6 +755,9 @@ function M.prepare_scenario_setup(id, save_name, setup_options)
 		options.researched_technologies = setup_options.researched_technologies
 		if type(setup_options.extra_actions) == "table" then
 			options.extra_actions = setup_options.extra_actions
+		end
+		if type(setup_options.update_loop_probe_ticks) == "table" then
+			options.update_loop_probe_ticks = setup_options.update_loop_probe_ticks
 		end
 		if setup_options.build_order_mode ~= nil then
 			options.build_order_mode = setup_options.build_order_mode
@@ -762,6 +801,28 @@ function M.run_item_location_scan_now(options)
 	}
 	world.apply_action(harness.active, action, call_main_mod)
 	return {ok = true, tick = game.tick}
+end
+
+function M.record_update_loop_iteration_probe(payload)
+	local harness = ensure_harness_storage()
+	if harness.active == nil then
+		return false
+	end
+	local report = harness.active.update_loop_probe_report
+	if report == nil then
+		return false
+	end
+	if type(payload) ~= "table" then
+		payload = {}
+	end
+	local entry = deep_copy(payload)
+	if type(entry.tick) == "number" and type(report.abs_tick_start) == "number" then
+		entry.abs_tick = entry.tick
+		entry.tick = entry.tick - report.abs_tick_start
+	end
+	entry.scan = world.scan_chain_item_locations(harness.active)
+	report.iterations[#report.iterations + 1] = entry
+	return true
 end
 
 function M.get_active_action_history()
