@@ -452,6 +452,24 @@ function undergrounds.call_replace(surface, entity_idx, entity_data)
 	
 end
 
+function undergrounds.collect_extra_neighbour_data(entity, neighbour_entity, replace_context, extra_neighbours_data)
+	local extra_neigbour = entity.neighbours
+	if extra_neigbour ~= nil and extra_neigbour ~= neighbour_entity and extra_neigbour.valid and extra_neigbour.type == "underground-belt" then
+		local extra_neighbour_idx = entities.get_entity_idx(extra_neigbour)
+		local extra_underground_len = undergrounds.underground_length(extra_neigbour)
+		local extra_lanes_items, extra_lanes_positions = undergrounds.check_and_clear_lanes(extra_neigbour, extra_underground_len, replace_context)
+		extra_neighbours_data[#extra_neighbours_data + 1] = {
+			entity = extra_neigbour,
+			idx = extra_neighbour_idx,
+			items = extra_lanes_items,
+			positions = extra_lanes_positions,
+			underground_len = extra_underground_len
+		}
+		return true
+	end
+	return false
+end
+
 function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neighbour, power_up, underground_len, replace_context)
 	local own_replace_context = false
 	if replace_context == nil then
@@ -495,6 +513,8 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	local neighbour_idx = nil
 	local neighbour_is_underground = false
 	local neighbour_deconstructed = false
+	local extra_neighbours_data = {}
+	
 	if neighbour_cond then
 		neighbour_is_underground = neighbour_entity.type == "underground-belt"
 		neighbour_idx = entities.get_entity_idx(neighbour_entity)
@@ -503,6 +523,14 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 		if not replace_context.disable_item_transfer and neighbour_is_underground and neighbour_deconstructed then
 			n_lanes_items, n_lanes_positions = undergrounds.check_and_clear_lanes(neighbour_entity, underground_len, replace_context)
 		end
+
+		-- just after the neighbour has to be either nil or the 'old neighbour'
+		-- if another one is present we need to store its items and positions
+		undergrounds.collect_extra_neighbour_data(entity, neighbour_entity, replace_context, extra_neighbours_data)
+		if neighbour_entity ~= nil and neighbour_entity.valid then
+			undergrounds.collect_extra_neighbour_data(neighbour_entity, entity, replace_context, extra_neighbours_data)
+		end
+
 	end
 	local new_entity = entity
 	-- if not neighbour_deconstructed or (not power_up) then
@@ -543,6 +571,15 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 			undergrounds.fill_lanes(new_entity, lanes_items, lanes_positions, underground_len, replace_context)
 		
 		end
+
+		if #extra_neighbours_data > 0 then
+			for _, extra_neighbour_data in ipairs(extra_neighbours_data) do
+				local extra_neighbour = extra_neighbour_data.entity
+				local extra_lanes_items = extra_neighbour_data.items
+				undergrounds.check_lanes(extra_neighbour, nil, extra_lanes_items, nil)
+				undergrounds.fill_lanes(extra_neighbour, extra_lanes_items, extra_neighbour_data.positions, extra_neighbour_data.underground_len, replace_context)
+			end
+		end
 	end
 
 	utils.apply_entity_planner_state(new_entity, planner_state)
@@ -560,11 +597,11 @@ function undergrounds.run_for_entity(entity, surface, entity_idx, check_for_neig
 	if entity and entity.valid and entities_by_surface ~= nil and entities_by_surface[entity_idx] == entity then
 		entities.check_and_replace_power_entity(entity, power_entities_by_surface and power_entities_by_surface[entity_idx] or nil)
 		if utils.read_deconstruction_mark(entity) then
-			return nil, nil, nil, true
+			return nil, nil, entity, true
 		end
 		local power_entity = power_entities_by_surface and power_entities_by_surface[entity_idx] or nil
 		if power_entity == nil or (not power_entity.valid) then
-			return nil, nil, nil, false
+			return nil, nil, entity, false
 		end
 		local required_energy = power_entity.electric_buffer_size * (utils.get_required_energy_percentage_setting() / 100)
 		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
@@ -574,7 +611,7 @@ function undergrounds.run_for_entity(entity, surface, entity_idx, check_for_neig
 			return undergrounds.replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len, replace_context)
 		end
 	end
-	return nil, nil, nil, false
+	return nil, nil, entity, false
 end
 
 return undergrounds
