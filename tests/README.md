@@ -49,6 +49,13 @@ The action type is `scan_item_locations` and supports:
 - `output_file` (`string`): write JSON payload into `script-output/<name>`.
 - `output_file_pattern` (`string`): template with `{tick}` and `{scenario}` placeholders.
 
+You can also schedule a game pause at a scenario-relative tick:
+
+- Action type: `pause_game` with `tick = <scenario_elapsed_tick>`.
+- Remote call while a scenario is active: `remote.call("pbe_integration_harness","queue_pause_at_tick", 600)`.
+- Setup-time option: `prepare_scenario_setup(..., { pause_at_tick = 600 })`.
+- Default behavior is unchanged: no pause is auto-queued unless you request it.
+
 A dedicated diagnosis runner can execute a single scenario, inject scans at 0%, 10%..100%, and iteratively bisect loss intervals:
 
 ```bash

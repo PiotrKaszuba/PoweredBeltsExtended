@@ -292,6 +292,8 @@ def main() -> int:
                 '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","transfer_underground_multi_io_outage_restore_preserve","random",123)'
                 '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","planner_blueprint_build_and_force_build")'
                 '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","planner_blueprint_build_and_force_build_multi_io_flicker")'
+                '\n/c remote.call("pbe_integration_harness","prepare_scenario_setup","transfer_underground_multi_io_outage_restore_preserve",nil,{pause_at_tick=600})'
+                '\n/c remote.call("pbe_integration_harness","queue_pause_at_tick",600)'
 
                 '\n/c game.tick_paused = false'
                 '\n\n-- Change default build order for subsequent setup/run commands'

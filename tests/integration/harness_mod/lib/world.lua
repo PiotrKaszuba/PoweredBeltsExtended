@@ -1528,6 +1528,8 @@ function M.apply_action(active, action, call_main_mod)
 		if type(output_file) == "string" and output_file ~= "" then
 			helpers.write_file(output_file, helpers.table_to_json(payload), false)
 		end
+	elseif action.type == "pause_game" then
+		game.tick_paused = true
 	end
 end
 
