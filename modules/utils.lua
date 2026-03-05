@@ -1,6 +1,6 @@
 local utils = {}
 
-utils.current_version = 120
+utils.current_version = 130
 utils.belt_entity_types = {
 	["transport-belt"] = true,
 	["underground-belt"] = true,

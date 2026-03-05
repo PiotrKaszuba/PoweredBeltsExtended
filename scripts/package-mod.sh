@@ -78,6 +78,11 @@ FILES_TO_INCLUDE=(
 DIRS_TO_INCLUDE=(
   "locale"
   "prototypes"
+  "modules"
+)
+
+PATHS_TO_EXCLUDE=(
+  "modules/tests.lua"
 )
 
 echo
@@ -106,6 +111,18 @@ for dir in "${DIRS_TO_INCLUDE[@]}"; do
     echo "  + $dir/ ($file_count files)"
   else
     echo "  - $dir/ (not found, skipping)"
+  fi
+done
+
+echo
+echo "Applying exclusions:"
+for excluded_path in "${PATHS_TO_EXCLUDE[@]}"; do
+  target_path="$OUTPUT_DIR/$excluded_path"
+  if [[ -e "$target_path" ]]; then
+    rm -rf "$target_path"
+    echo "  - $excluded_path"
+  else
+    echo "  - $excluded_path (not present)"
   fi
 done
 

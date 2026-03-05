@@ -53,7 +53,13 @@ $FilesToInclude = @(
 # Directories to include
 $DirsToInclude = @(
     "locale",
-    "prototypes"
+    "prototypes",
+    "modules"
+)
+
+# Paths to exclude from release output (relative to project root)
+$PathsToExclude = @(
+    "modules/tests.lua"
 )
 
 # Copy individual files
@@ -83,6 +89,20 @@ foreach ($dir in $DirsToInclude) {
         Write-Host "  + $dir/ ($fileCount files)" -ForegroundColor Gray
     } else {
         Write-Host "  - $dir/ (not found, skipping)" -ForegroundColor Yellow
+    }
+}
+
+# Remove excluded paths from output
+if ($PathsToExclude.Count -gt 0) {
+    Write-Host "`nApplying exclusions:" -ForegroundColor Green
+    foreach ($excludedPath in $PathsToExclude) {
+        $targetPath = Join-Path $OutputDir $excludedPath
+        if (Test-Path $targetPath) {
+            Remove-Item -Path $targetPath -Recurse -Force
+            Write-Host "  - $excludedPath" -ForegroundColor Gray
+        } else {
+            Write-Host "  - $excludedPath (not present)" -ForegroundColor Yellow
+        }
     }
 }
 
