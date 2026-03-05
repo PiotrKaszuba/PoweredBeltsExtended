@@ -493,19 +493,36 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	local n_lanes_items = nil
 	local n_lanes_positions = nil
 	local neighbour_idx = nil
+	local neighbour_is_underground = false
+	local neighbour_deconstructed = false
 	if neighbour_cond then
+		neighbour_is_underground = neighbour_entity.type == "underground-belt"
 		neighbour_idx = entities.get_entity_idx(neighbour_entity)
-		n_lanes_items, n_lanes_positions, neighbour_entity = undergrounds.run_for_entity(neighbour_entity, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
+		
+		n_lanes_items, n_lanes_positions, neighbour_entity, neighbour_deconstructed = undergrounds.run_for_entity(neighbour_entity, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
+		if not replace_context.disable_item_transfer and neighbour_is_underground and neighbour_deconstructed then
+			n_lanes_items, n_lanes_positions = undergrounds.check_and_clear_lanes(neighbour_entity, underground_len, replace_context)
+		end
 	end
-
-	local new_entity = undergrounds.call_replace(surface, entity_idx, entity_data)
+	local new_entity = entity
+	-- if not neighbour_deconstructed or (not power_up) then
+	new_entity = undergrounds.call_replace(surface, entity_idx, entity_data)
+	-- end
 
 	local _, entities_by_surface = utils.get_surface_tables(surface, false)
 	
 	if is_underground then
 		if (not replace_context.disable_item_transfer) and neighbour_cond then
 			if (neighbour_entity == nil or not neighbour_entity.valid) and entities_by_surface ~= nil then
-				neighbour_entity = entities_by_surface[neighbour_idx]
+				if (neighbour_entity == nil or not neighbour_entity.valid) and entities_by_surface ~= nil then
+					neighbour_entity = new_entity.neighbours
+					if neighbour_entity == nil or not neighbour_entity.valid then
+						neighbour_entity = entities_by_surface[neighbour_idx]
+						if neighbour_entity == nil or not neighbour_entity.valid then
+							neighbour_entity = nil
+						end
+					end
+				end
 			end
 			undergrounds.check_lanes(new_entity, neighbour_entity, lanes_items, n_lanes_items)
 			if new_entity.belt_to_ground_type == "input" then
@@ -533,19 +550,21 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	if own_replace_context and replace_context.temp_inventory ~= nil and replace_context.temp_inventory.valid then
 		replace_context.temp_inventory.destroy()
 	end
-	return lanes_items, lanes_positions, new_entity
+	return lanes_items, lanes_positions, new_entity, false
 	
-
 end
 
 function undergrounds.run_for_entity(entity, surface, entity_idx, check_for_neighbour, underground_len, powerup_n, powerdown_n, replace_context)
 	-- TODO/IDEA: only powered up when both neighbours powered up? otherwise both power down?
 	local _, entities_by_surface, power_entities_by_surface = utils.get_surface_tables(surface, true)
-	if entity.valid and entities_by_surface ~= nil and entities_by_surface[entity_idx] ~= nil then
+	if entity and entity.valid and entities_by_surface ~= nil and entities_by_surface[entity_idx] == entity then
 		entities.check_and_replace_power_entity(entity, power_entities_by_surface and power_entities_by_surface[entity_idx] or nil)
+		if utils.read_deconstruction_mark(entity) then
+			return nil, nil, nil, true
+		end
 		local power_entity = power_entities_by_surface and power_entities_by_surface[entity_idx] or nil
 		if power_entity == nil or (not power_entity.valid) then
-			return nil, nil, nil
+			return nil, nil, nil, false
 		end
 		local required_energy = power_entity.electric_buffer_size * (utils.get_required_energy_percentage_setting() / 100)
 		if string.match(entity.name, "^unpowered%-") and (power_entity.energy >= required_energy or powerup_n) then
@@ -555,7 +574,7 @@ function undergrounds.run_for_entity(entity, surface, entity_idx, check_for_neig
 			return undergrounds.replace_entity(entity, surface, entity_idx, check_for_neighbour, false, underground_len, replace_context)
 		end
 	end
-	return nil, nil, nil
+	return nil, nil, nil, false
 end
 
 return undergrounds

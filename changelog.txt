@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.2.4
+Date: 2026.2.26
+  Changes:
+    - Fixed a problem that could crash the game when ghost underground belts were built upon existing mod's powered entities.
+    - Entities that are currently marked for deconstruction are no longer replaced (power down or up), but still drain power.
+---------------------------------------------------------------------------------------------------
 Version: 1.2.3
 Date: 2026.2.26
   Changes:

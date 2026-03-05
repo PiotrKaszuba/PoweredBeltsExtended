@@ -47,6 +47,9 @@ Note: behavior is threshold-based (on/off), not gradual speed throttling.
 
 In edge cases, this means a tiny power source can keep many belts running as long as they do not drop below the threshold.
 
+Entities that are currently marked for deconstruction won't be powered up or down, but still drain power. This is to prevent overriding the force blueprint build when the entity is marked for deconstruction and a ghost entity is placed on top of it. If the entity was powered up or down it would remove the ghost entity.
+It should not interact with the power up/down logic as entities marked for deconstruction (belts, undergrounds, splitters) are stopped regardless.
+
 ### Underground Belt Item Safety
 
 In similar mods (and originally in Powered Belts) items in underground belts disappear due to sequential entity replacement which immediately breaks their transport lines and removes held items from the game. 

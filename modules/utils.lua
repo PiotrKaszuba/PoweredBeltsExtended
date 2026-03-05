@@ -98,7 +98,7 @@ local function adapt_upgrade_target_name_for_entity(target_name, entity_name)
 	return base_powered_name(target_name)
 end
 
-local function read_deconstruction_mark(entity)
+function utils.read_deconstruction_mark(entity)
 	local ok, marked = pcall(function()
 		return entity.to_be_deconstructed(entity.force)
 	end)
@@ -146,7 +146,7 @@ function utils.capture_entity_planner_state(entity)
 	end
 	local upgrade_target_name = read_upgrade_target_name(entity)
 	return {
-		deconstruction_marked = read_deconstruction_mark(entity),
+		deconstruction_marked = utils.read_deconstruction_mark(entity),
 		upgrade_marked = read_upgrade_mark(entity) or upgrade_target_name ~= nil,
 		upgrade_target_name = upgrade_target_name,
 	}
