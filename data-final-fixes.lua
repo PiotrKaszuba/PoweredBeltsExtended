@@ -50,6 +50,7 @@ local function create_power_entity_def(v, i, ei, usage_name, upgrade_name)
 		localised_description = {"entity-description." .. v.name},
 		icon = v.icon,
 		icon_size = v.icon_size,
+		icons = v.icons,
 		flags = {"not-deconstructable", "not-blueprintable", "not-upgradable", "not-on-map", "not-in-kill-statistics", "not-in-made-in" },
 		allow_copy_paste = false,
 		max_health = 1,
