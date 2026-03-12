@@ -122,8 +122,8 @@ local function process_belt_type(raw_key, mult)
 				x.placeable_by = v.placeable_by
 			end
 			
-			x.localised_name = {"entity-name." .. v.name}
-			x.localised_description = {"entity-description." .. v.name}
+			x.localised_name = x.localised_name or {"entity-name." .. v.name}
+			x.localised_description = x.localised_description or {"entity-description." .. v.name}
 			
 
 			data:extend({x})
