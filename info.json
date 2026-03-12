@@ -10,6 +10,7 @@
     "dependencies": [
         "base >= 2.0",
         "? black-rubber-belts-remastered",
+        "(?) loader-utils",
         "! PoweredBelts",
         "! ElectricPoweredBelts",
         "! ElectricPoweredBeltsFixed"
