@@ -444,7 +444,7 @@ function undergrounds.call_replace(surface, entity_idx, entity_data)
 		position = entity_data.position,
 		force = entity_data.force,
 		direction = entity_data.direction,
-		type = entity_data.belt_to_ground_type,
+		type = entity_data.belt_to_ground_type or entity_data.loader_type,
 		fast_replace = true,
 		spill = false
 	}
@@ -490,6 +490,7 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	local planner_state = utils.capture_entity_planner_state(entity)
 	local entity_data = {surface = entity.surface, name = entity.name, position = entity.position, force = entity.force, direction = entity.direction}
 	local is_underground = entity.type == "underground-belt"
+	local is_loader = string.startswith(entity.type, "loader")
 	local neighbour_entity = nil
 	local lanes_items = nil
 	local lanes_positions = nil
@@ -499,6 +500,8 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 		if not replace_context.disable_item_transfer then
 			lanes_items, lanes_positions = undergrounds.check_and_clear_lanes(entity, underground_len, replace_context)
 		end
+	elseif is_loader then
+		entity_data.loader_type = entity.loader_type
 	end
 	
 	local new_name = nil
