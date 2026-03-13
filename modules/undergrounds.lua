@@ -1,5 +1,6 @@
-local utils = require("modules.utils")
+﻿local utils = require("modules.utils")
 local entities = require("modules.entities")
+local compatibility = require("modules.compatibility")
 
 local undergrounds = {}
 
@@ -439,7 +440,7 @@ function undergrounds.fill_lanes(underground, lanes_items, lanes_positions, unde
 end
 
 function undergrounds.call_replace(surface, entity_idx, entity_data)
-	local new_entity = entity_data.surface.create_entity{
+	local create_params = {
 		name = entity_data.new_name,
 		position = entity_data.position,
 		force = entity_data.force,
@@ -448,7 +449,19 @@ function undergrounds.call_replace(surface, entity_idx, entity_data)
 		fast_replace = true,
 		spill = false
 	}
+	if entity_data.raise_built == true then
+		create_params.raise_built = true
+	end
+
+	local new_entity = entity_data.surface.create_entity(create_params)
 	
+	-- fallback for if other mod destroys the entity with raise_built event
+	if create_params.raise_built == true and (new_entity == nil or not new_entity.valid) then
+		compatibility.clear_skip_built_init_marker(entity_data.surface, entity_data.position)
+		create_params.raise_built = nil
+		new_entity = entity_data.surface.create_entity(create_params)
+	end
+
 	local _, entities_by_surface = utils.get_surface_tables(surface, true)
 	entities_by_surface[entity_idx] = new_entity
 	return new_entity
@@ -458,7 +471,7 @@ end
 function undergrounds.collect_extra_neighbour_data(entity, neighbour_entity, replace_context, extra_neighbours_data)
 	local extra_neigbour = entity.neighbours
 	if extra_neigbour ~= nil and extra_neigbour ~= neighbour_entity and extra_neigbour.valid and extra_neigbour.type == "underground-belt" then
-		local extra_neighbour_idx = entities.get_entity_idx(extra_neigbour)
+		local extra_neighbour_idx = utils.get_entity_position_key(extra_neigbour)
 		local extra_underground_len = undergrounds.underground_length(extra_neigbour)
 		local extra_lanes_items, extra_lanes_positions = undergrounds.check_and_clear_lanes(extra_neigbour, extra_underground_len, replace_context)
 		extra_neighbours_data[#extra_neighbours_data + 1] = {
@@ -490,7 +503,7 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	local planner_state = utils.capture_entity_planner_state(entity)
 	local entity_data = {surface = entity.surface, name = entity.name, position = entity.position, force = entity.force, direction = entity.direction}
 	local is_underground = entity.type == "underground-belt"
-	local is_loader = string.startswith(entity.type, "loader")
+	local is_loader = utils.startswith(entity.type, "loader")
 	local neighbour_entity = nil
 	local lanes_items = nil
 	local lanes_positions = nil
@@ -511,7 +524,8 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 		new_name = "unpowered-" .. entity_data.name
 	end
 	entity_data.new_name = new_name
-	
+	local compat_context = compatibility.on_pre_replace(entity, new_name, power_up)
+	entity_data.raise_built = compat_context.raise_built
 	local neighbour_cond = check_for_neighbour and neighbour_entity ~= nil
 	
 	local n_lanes_items = nil
@@ -523,7 +537,7 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	
 	if neighbour_cond then
 		neighbour_is_underground = neighbour_entity.type == "underground-belt"
-		neighbour_idx = entities.get_entity_idx(neighbour_entity)
+		neighbour_idx = utils.get_entity_position_key(neighbour_entity)
 		
 		n_lanes_items, n_lanes_positions, neighbour_entity, neighbour_deconstructed = undergrounds.run_for_entity(neighbour_entity, surface, neighbour_idx, false, underground_len, power_up, not power_up, replace_context)
 		if not replace_context.disable_item_transfer and neighbour_is_underground and neighbour_deconstructed then
@@ -541,6 +555,7 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	local new_entity = entity
 	-- if not neighbour_deconstructed or (not power_up) then
 	new_entity = undergrounds.call_replace(surface, entity_idx, entity_data)
+	compatibility.on_post_replace(new_entity, power_up)
 	-- end
 
 	local _, entities_by_surface = utils.get_surface_tables(surface, false)
@@ -621,3 +636,5 @@ function undergrounds.run_for_entity(entity, surface, entity_idx, check_for_neig
 end
 
 return undergrounds
+
+

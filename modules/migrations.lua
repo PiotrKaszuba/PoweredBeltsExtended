@@ -1,4 +1,5 @@
 local utils = require("modules.utils")
+local compatibility = require("modules.compatibility")
 
 local migrations = {}
 
@@ -104,6 +105,7 @@ function migrations.init_globals()
 	storage.ground_lanes_max_check = 1.0
 	storage.fill_trial_interval = 0.025
 	storage.ver = utils.current_version
+	compatibility.init_storage()
 end
 
 return migrations

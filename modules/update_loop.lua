@@ -2,6 +2,7 @@ local utils = require("modules.utils")
 local entities = require("modules.entities")
 local undergrounds = require("modules.undergrounds")
 local migrations = require("modules.migrations")
+local compatibility = require("modules.compatibility")
 
 local tests, tests_loaded = utils.optional_require("modules.tests")
 
@@ -98,6 +99,7 @@ function update_loop.on_tick(event)
 			end
 		end
 	end
+	compatibility.on_tick()
 end
 
 return update_loop

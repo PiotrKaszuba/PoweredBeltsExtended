@@ -20,13 +20,13 @@ function scans.find_all_entities_powered()
 		local seen_positions = {}
 		for _, v in pairs(world_entities) do
 			if v.valid then
-				local pos = entities.get_entity_idx(v)
-				seen_positions[pos] = true
+				local pos_key = utils.get_entity_position_key(v)
+				seen_positions[pos_key] = true
 				local entities_by_surface = storage.entities[surface_key]
 				local power_entities_by_surface = storage.power_entities[surface_key]
 				local stored_entity = nil
 				if entities_by_surface ~= nil then
-					stored_entity = entities_by_surface[pos]
+					stored_entity = entities_by_surface[pos_key]
 				end
 				if stored_entity ~= v then
 					if stored_entity == nil then
@@ -39,7 +39,7 @@ function scans.find_all_entities_powered()
 					entities.init_entity(v)
 					num_init = num_init + 1
 				else
-					entities.check_and_replace_power_entity(v, power_entities_by_surface and power_entities_by_surface[pos] or nil)
+					entities.check_and_replace_power_entity(v, power_entities_by_surface and power_entities_by_surface[pos_key] or nil)
 				end
 			else
 				num_entity_invalid = num_entity_invalid + 1
@@ -49,13 +49,13 @@ function scans.find_all_entities_powered()
 		local entities_by_surface = storage.entities[surface_key]
 		if entities_by_surface ~= nil then
 			local stale_positions = {}
-			for pos, _ in pairs(entities_by_surface) do
-				if not seen_positions[pos] then
-					stale_positions[#stale_positions + 1] = pos
+			for pos_key, _ in pairs(entities_by_surface) do
+				if not seen_positions[pos_key] then
+					stale_positions[#stale_positions + 1] = pos_key
 				end
 			end
-			for _, pos in pairs(stale_positions) do
-				entities.clear_tile(pos, surface)
+			for _, pos_key in pairs(stale_positions) do
+				entities.clear_tile(pos_key, surface)
 				num_stale_entries = num_stale_entries + 1
 			end
 		end
@@ -82,23 +82,23 @@ function scans.find_all_power_entities()
 		if power_entities_by_surface ~= nil then
 			local remove_keys = {}
 			local remap_entries = {}
-			for stored_pos, stored_entity in pairs(power_entities_by_surface) do
+			for stored_pos_key, stored_entity in pairs(power_entities_by_surface) do
 				if stored_entity == nil or (not stored_entity.valid) then
-					remove_keys[#remove_keys + 1] = stored_pos
+					remove_keys[#remove_keys + 1] = stored_pos_key
 					num_removed_invalid_power_entries = num_removed_invalid_power_entries + 1
 				elseif stored_entity.surface ~= surface then
-					remove_keys[#remove_keys + 1] = stored_pos
-					local target_pos = entities.get_entity_idx(stored_entity)
+					remove_keys[#remove_keys + 1] = stored_pos_key
+					local target_pos_key = utils.get_entity_position_key(stored_entity)
 					local _, _, target_power_entities_by_surface = utils.get_surface_tables(stored_entity.surface, true)
-					if target_power_entities_by_surface[target_pos] == nil then
-						target_power_entities_by_surface[target_pos] = stored_entity
+					if target_power_entities_by_surface[target_pos_key] == nil then
+						target_power_entities_by_surface[target_pos_key] = stored_entity
 					end
 					num_remapped_power_entries = num_remapped_power_entries + 1
 				else
-					local actual_pos = entities.get_entity_idx(stored_entity)
-					if actual_pos ~= stored_pos then
-						remove_keys[#remove_keys + 1] = stored_pos
-						remap_entries[#remap_entries + 1] = {pos = actual_pos, entity = stored_entity}
+					local actual_pos_key = utils.get_entity_position_key(stored_entity)
+					if actual_pos_key ~= stored_pos_key then
+						remove_keys[#remove_keys + 1] = stored_pos_key
+						remap_entries[#remap_entries + 1] = {pos_key = actual_pos_key, entity = stored_entity}
 						num_remapped_power_entries = num_remapped_power_entries + 1
 					end
 				end
@@ -107,19 +107,19 @@ function scans.find_all_power_entities()
 				power_entities_by_surface[remove_key] = nil
 			end
 			for _, remap_entry in pairs(remap_entries) do
-				if power_entities_by_surface[remap_entry.pos] == nil then
-					power_entities_by_surface[remap_entry.pos] = remap_entry.entity
+				if power_entities_by_surface[remap_entry.pos_key] == nil then
+					power_entities_by_surface[remap_entry.pos_key] = remap_entry.entity
 				end
 			end
 		end
 		local world_entities = surface.find_entities_filtered{type = "electric-energy-interface"}
 		local power_entities_temp = {}
 		for _, v in pairs(world_entities) do
-			if string.endswith(v.name, '-power') then
-				local pos = entities.get_entity_idx(v)
+			if utils.is_power_entity_name(v.name) then
+				local pos_key = utils.get_entity_position_key(v)
 				local valid_entity = true
-				if power_entities_temp[pos] ~= nil then
-					game.print('[PBE] Warning: double power entity (destroying it now) at position: ' .. pos)
+				if power_entities_temp[pos_key] ~= nil then
+					game.print('[PBE] Warning: double power entity (destroying it now) at position: ' .. pos_key)
 					v.destroy()
 					valid_entity = false
 					num_destroyed_entities = num_destroyed_entities + 1
@@ -128,41 +128,41 @@ function scans.find_all_power_entities()
 				local entities_to_power = nil
 				if valid_entity then
 					entities_to_power = entities.find_all_entities_to_power_at_position(surface, v.position, 1)
-					if entities_to_power[pos] == nil then
+					if entities_to_power[pos_key] == nil then
 						v.destroy()
 						local entities_by_surface = storage.entities[surface_key]
 						local power_entities_by_surface = storage.power_entities[surface_key]
-						if power_entities_by_surface ~= nil then power_entities_by_surface[pos] = nil end
-						if entities_by_surface ~= nil then entities_by_surface[pos] = nil end
+						if power_entities_by_surface ~= nil then power_entities_by_surface[pos_key] = nil end
+						if entities_by_surface ~= nil then entities_by_surface[pos_key] = nil end
 						valid_entity = false
 						num_destroyed_entities = num_destroyed_entities + 1
 					end
 				end
 				local entities_by_surface = storage.entities[surface_key]
 				local power_entities_by_surface = storage.power_entities[surface_key]
-				if valid_entity and (entities_by_surface == nil or entities_by_surface[pos] == nil) then
-					game.print('[PBE] Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos)
+				if valid_entity and (entities_by_surface == nil or entities_by_surface[pos_key] == nil) then
+					game.print('[PBE] Warning: power entity does not have entry in entities table (checking whether object exists), position: ' .. pos_key)
 					
-					if entities_to_power[pos] ~= nil then -- entities_to_power won't be nil because valid_entity check as when setting entities_to_power
-						game.print("[PBE] Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos].name)
+					if entities_to_power[pos_key] ~= nil then -- entities_to_power won't be nil because valid_entity check as when setting entities_to_power
+						game.print("[PBE] Warning: ... AND entity to be powered exists at this position (assigning it now)!: " .. entities_to_power[pos_key].name)
 						local _, entities_by_surface_new = utils.get_surface_tables(surface, true)
-						entities_by_surface_new[pos] = entities_to_power[pos]
+						entities_by_surface_new[pos_key] = entities_to_power[pos_key]
 					else
 						game.print("[PBE] Warning: ... AND entity to be powered DOES NOT exist at this position (removing power entity now)!")
 						v.destroy()
-						if power_entities_by_surface ~= nil then power_entities_by_surface[pos] = nil end
+						if power_entities_by_surface ~= nil then power_entities_by_surface[pos_key] = nil end
 						valid_entity = false
 						num_destroyed_entities = num_destroyed_entities + 1
 					end
 					
 				
-				elseif valid_entity and (power_entities_by_surface == nil or power_entities_by_surface[pos] ~= v) then
-					game.print('[PBE] Warning: this power entity does not have entry in power entities table, position: (assigning it now)' .. pos)
+				elseif valid_entity and (power_entities_by_surface == nil or power_entities_by_surface[pos_key] ~= v) then
+					game.print('[PBE] Warning: this power entity does not have entry in power entities table, position: (assigning it now)' .. pos_key)
 					local _, _, power_entities_by_surface_new = utils.get_surface_tables(surface, true)
-					power_entities_by_surface_new[pos] = v
+					power_entities_by_surface_new[pos_key] = v
 				end
 				
-				if valid_entity then power_entities_temp[pos] = v end
+				if valid_entity then power_entities_temp[pos_key] = v end
 			end
 		end
 		utils.cleanup_empty_surface_tables(surface_key)

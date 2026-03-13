@@ -23,16 +23,16 @@ local function get_surface_state_snapshot(surface, max_details)
 
 	for _, entity in pairs(world_entities) do
 		if entity and entity.valid then
-			world_entities_by_pos[entities.get_entity_idx(entity)] = entity
+			world_entities_by_pos[utils.get_entity_position_key(entity)] = entity
 		end
 	end
 
 	for _, power_entity in pairs(world_all_power_entities) do
-		if power_entity and power_entity.valid and string.endswith(power_entity.name, "-power") then
-			local pos = entities.get_entity_idx(power_entity)
-			world_power_counts_by_pos[pos] = (world_power_counts_by_pos[pos] or 0) + 1
-			if world_power_by_pos[pos] == nil then
-				world_power_by_pos[pos] = power_entity
+		if power_entity and power_entity.valid and utils.is_power_entity_name(power_entity.name) then
+			local pos_key = utils.get_entity_position_key(power_entity)
+			world_power_counts_by_pos[pos_key] = (world_power_counts_by_pos[pos_key] or 0) + 1
+			if world_power_by_pos[pos_key] == nil then
+				world_power_by_pos[pos_key] = power_entity
 			end
 			world_power_entities[#world_power_entities + 1] = power_entity
 		end

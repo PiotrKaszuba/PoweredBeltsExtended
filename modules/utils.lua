@@ -1,6 +1,6 @@
 local utils = {}
 
-utils.current_version = 130
+utils.current_version = 131
 utils.belt_entity_types = {
 	["transport-belt"] = true,
 	["underground-belt"] = true,
@@ -17,16 +17,56 @@ utils.underground_transfer_modes = {
 utils.default_underground_transfer_mode = "name-only"
 utils.underground_transfer_mode_setting_name = "powered-belts-underground-item-transfer-mode"
 
+local UNPOWERED_PREFIX = "unpowered-"
+local POWERED_ENTITY_SUFFIX = "-power"
+
 local preserve_mode_temp_inventory_initial_size = 64
 local preserve_mode_temp_inventory_max_size = 65535
 
-function string:endswith(suffix)
-    return self:sub(-#suffix) == suffix
+local function endswith(str, suffix)
+    return str:sub(-#suffix) == suffix
 end
 
-function string:startswith(prefix)
-    return self:sub(1, #prefix) == prefix
+function utils.is_power_entity_name(name)
+	return endswith(name, POWERED_ENTITY_SUFFIX)
 end
+
+local function startswith(str, prefix)
+    return str:sub(1, #prefix) == prefix
+end
+
+utils.startswith = startswith
+
+function utils.strip_unpowered_prefix(name)
+	if not startswith(name, UNPOWERED_PREFIX) then
+		return name
+	end
+	return name:sub(#UNPOWERED_PREFIX + 1)
+end
+
+local function is_unpowered_name(name)
+	return startswith(name, UNPOWERED_PREFIX)
+end
+
+utils.is_unpowered_name = is_unpowered_name
+
+local function base_powered_name(name)
+	if not is_unpowered_name(name) then
+		return name
+	end
+	return string.sub(name, 11)
+end
+
+local function get_position_key(position)
+	return position.x .. " " .. position.y
+end
+
+utils.get_position_key = get_position_key
+
+function utils.get_entity_position_key(entity)
+	return get_position_key(entity.position)
+end
+
 
 function utils.optional_require(module_name, fallback_value)
 	if type(module_name) ~= "string" or module_name == "" then
@@ -97,16 +137,7 @@ function utils.cleanup_empty_surface_tables(surface_key)
 	end
 end
 
-local function is_unpowered_name(name)
-	return type(name) == "string" and string.match(name, "^unpowered%-") ~= nil
-end
 
-local function base_powered_name(name)
-	if not is_unpowered_name(name) then
-		return name
-	end
-	return string.sub(name, 11)
-end
 
 local function adapt_upgrade_target_name_for_entity(target_name, entity_name)
 	if type(target_name) ~= "string" then
@@ -116,7 +147,7 @@ local function adapt_upgrade_target_name_for_entity(target_name, entity_name)
 		if is_unpowered_name(target_name) then
 			return target_name
 		end
-		return "unpowered-" .. target_name
+		return UNPOWERED_PREFIX .. target_name
 	end
 	return base_powered_name(target_name)
 end

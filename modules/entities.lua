@@ -3,13 +3,6 @@ local forces = require("modules.forces")
 
 local entities = {}
 
-function entities.get_entity_idx(entity)
-	return entity.position.x .. " " .. entity.position.y
-end
-
-function entities.get_entity_idx_from_position(position)
-	return position.x .. " " .. position.y
-end
 
 function entities.clear_power_entity(pos, surface)
 	local surface_key, _, power_entities_by_surface = utils.get_surface_tables(surface, false)
@@ -41,14 +34,14 @@ function entities.get_correct_power_entity_name(base_name, force)
 end
 
 function entities.create_power_entity(base_name, surface, position, force, direction, base_name_is_correct)
-	local pos = entities.get_entity_idx_from_position(position)
-	entities.clear_power_entity(pos, surface)
+	local pos_key = utils.get_position_key(position)
+	entities.clear_power_entity(pos_key, surface)
 	local name = base_name
 	if not base_name_is_correct then
 		name = entities.get_correct_power_entity_name(base_name, force)
 	end
 	local _, _, power_entities_by_surface = utils.get_surface_tables(surface, true)
-	power_entities_by_surface[pos] = surface.create_entity{
+	power_entities_by_surface[pos_key] = surface.create_entity{
 		name = name,
 		position = position,
 		force = force,
@@ -79,26 +72,26 @@ function entities.find_all_entities_to_power_at_position(surface, position, radi
 	local world_entities = surface.find_entities_filtered{position=position, radius=radius}
 	local entities_to_power = {}
 	for _,v in pairs(world_entities) do
-		if (not string.endswith(v.name, '-power')) and utils.belt_entity_types[v.type] then
-			entities_to_power[entities.get_entity_idx(v)] = v
+		if (not utils.is_power_entity_name(v.name)) and utils.belt_entity_types[v.type] then
+			entities_to_power[utils.get_entity_position_key(v)] = v
 		end
 	end
 	return entities_to_power
 end
 
 function entities.init_entity(entity)
-	local pos = entities.get_entity_idx(entity)
-	entities.clear_tile(pos, entity.surface)
+	local pos_key = utils.get_entity_position_key(entity)
+	entities.clear_tile(pos_key, entity.surface)
 	local _, entities_by_surface, power_entities_by_surface = utils.get_surface_tables(entity.surface, true)
 	local correct_name = entities.get_correct_power_entity_name(entities.extract_base_name_from_entity_to_power(entity.name), entity.force)
-	power_entities_by_surface[pos] = entity.surface.create_entity{
+	power_entities_by_surface[pos_key] = entity.surface.create_entity{
 		name = correct_name,
 		position = entity.position,
 		force = entity.force,
 		direction = entity.direction,
 		destructible = false
 	}
-	entities_by_surface[pos] = entity
+	entities_by_surface[pos_key] = entity
 end
 
 return entities
