@@ -18,6 +18,98 @@ local results_output_file = "pbe-integration-results.json"
 local test_game_speed = 1
 local tick_log_interval = 60
 
+local function get_active_mods_table()
+	if script ~= nil and script.active_mods ~= nil then
+		return script.active_mods
+	end
+	if game ~= nil and game.active_mods ~= nil then
+		return game.active_mods
+	end
+	return {}
+end
+
+local function is_mod_active(mod_name)
+	if type(mod_name) ~= "string" or mod_name == "" then
+		return false
+	end
+	return get_active_mods_table()[mod_name] ~= nil
+end
+
+local function value_in_string_list(values, needle)
+	if type(values) == "string" then
+		return values == needle
+	end
+	if type(values) ~= "table" then
+		return false
+	end
+	for _, value in pairs(values) do
+		if type(value) == "string" and value == needle then
+			return true
+		end
+	end
+	return false
+end
+
+local function get_active_aai_loader_mode()
+	if settings == nil or settings.startup == nil then
+		return nil
+	end
+	local setting = settings.startup["aai-loaders-mode"]
+	if setting == nil then
+		return nil
+	end
+	if type(setting.value) ~= "string" then
+		return nil
+	end
+	return setting.value
+end
+
+local function scenario_matches_runtime_mod_filters(scenario)
+	if type(scenario) ~= "table" then
+		return false
+	end
+
+	if type(scenario.required_mods) == "table" then
+		for _, mod_name in pairs(scenario.required_mods) do
+			if type(mod_name) == "string" and mod_name ~= "" and (not is_mod_active(mod_name)) then
+				return false
+			end
+		end
+	end
+
+	if type(scenario.forbidden_mods) == "table" then
+		for _, mod_name in pairs(scenario.forbidden_mods) do
+			if type(mod_name) == "string" and mod_name ~= "" and is_mod_active(mod_name) then
+				return false
+			end
+		end
+	end
+
+	local aai_mode = get_active_aai_loader_mode()
+	if scenario.required_aai_loader_mode ~= nil then
+		if aai_mode == nil or (not value_in_string_list(scenario.required_aai_loader_mode, aai_mode)) then
+			return false
+		end
+	end
+	if scenario.forbidden_aai_loader_mode ~= nil and aai_mode ~= nil then
+		if value_in_string_list(scenario.forbidden_aai_loader_mode, aai_mode) then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function filter_scenarios_for_runtime(suite)
+	local filtered = {}
+	for _, scenario in pairs(suite or {}) do
+		if scenario_matches_runtime_mod_filters(scenario) then
+			filtered[#filtered + 1] = scenario
+		end
+	end
+	return filtered
+end
+
 local function deep_copy(value, seen)
 	if type(value) ~= "table" then
 		return value
@@ -582,7 +674,7 @@ local function queue_scenarios(scenario_list)
 end
 
 local function get_default_suite()
-	return scenarios.get_all()
+	return filter_scenarios_for_runtime(scenarios.get_all())
 end
 
 local function get_filtered_suite(filter)
@@ -602,7 +694,7 @@ local function get_filtered_suite(filter)
 		local matched = {}
 		for _, id in pairs(filter) do
 			local scenario = scenarios.find_by_id(id)
-			if scenario ~= nil then
+			if scenario ~= nil and scenario_matches_runtime_mod_filters(scenario) then
 				matched[#matched + 1] = scenario
 			end
 		end
@@ -648,6 +740,9 @@ function M.run_scenario(id)
 	if scenario == nil then
 		return false
 	end
+	if not scenario_matches_runtime_mod_filters(scenario) then
+		return false
+	end
 	apply_test_game_speed()
 	queue_scenarios({scenario})
 	return true
@@ -657,6 +752,9 @@ local function setup_scenario_state(id, save_name, setup_options)
 	local scenario = scenarios.find_by_id(id)
 	if scenario == nil then
 		return {ok = false, error = "Unknown scenario id: " .. tostring(id)}
+	end
+	if not scenario_matches_runtime_mod_filters(scenario) then
+		return {ok = false, error = "Scenario not runnable with active mods/startup settings: " .. tostring(id)}
 	end
 	local _, build_order_error, has_explicit_build_order = read_build_order_from_setup_options(setup_options)
 	if has_explicit_build_order and build_order_error ~= nil then

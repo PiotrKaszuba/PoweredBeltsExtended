@@ -300,6 +300,238 @@ local function evaluate_blueprint_result(active, assertion)
 	return true, "Blueprint state matches expectations", extra
 end
 
+local function read_entity_active(entity)
+	if not (entity and entity.valid) then
+		return nil
+	end
+	local ok, active = pcall(function()
+		return entity.active
+	end)
+	if not ok then
+		return nil
+	end
+	return active == true
+end
+
+local function evaluate_loader_active_state(active, assertion)
+	local refs = collect_target_references(assertion)
+	if #refs == 0 then
+		return false, "No target references provided", nil
+	end
+
+	local expected_active = assertion.expected_active ~= false
+	local failures = {}
+	local extra = {entities = {}}
+
+	for _, reference_name in pairs(refs) do
+		local entities = world.get_referenced_entities(active, reference_name)
+		if #entities == 0 then
+			failures[#failures + 1] = reference_name .. ":missing"
+		end
+		for idx, entity in ipairs(entities) do
+			local key = reference_name .. "#" .. idx
+			local actual_active = read_entity_active(entity)
+			extra.entities[key] = {
+				valid = entity and entity.valid == true,
+				name = entity and entity.name or nil,
+				active = actual_active,
+			}
+			if actual_active == nil then
+				failures[#failures + 1] = key .. ":invalid"
+			elseif actual_active ~= expected_active then
+				failures[#failures + 1] = key .. ":active-mismatch(" .. tostring(actual_active) .. "!=" .. tostring(expected_active) .. ")"
+			end
+		end
+	end
+
+	if #failures > 0 then
+		return false, table.concat(failures, ", "), extra
+	end
+	return true, "Loader active state matches expected", extra
+end
+
+local function collect_loader_refs(assertion)
+	local refs = {}
+	if type(assertion.loader_ref) == "string" and assertion.loader_ref ~= "" then
+		refs[#refs + 1] = assertion.loader_ref
+	end
+	if type(assertion.loader_refs) == "table" then
+		for _, ref in pairs(assertion.loader_refs) do
+			if type(ref) == "string" and ref ~= "" then
+				refs[#refs + 1] = ref
+			end
+		end
+	end
+	if #refs == 0 then
+		refs = collect_target_references(assertion)
+	end
+	return refs
+end
+
+local function find_aai_pipe_entities(surface, pipe_name, position, radius, force_name)
+	if not (surface and surface.valid and type(pipe_name) == "string" and pipe_name ~= "" and type(position) == "table") then
+		return {}
+	end
+	local query = {
+		name = pipe_name,
+		position = position,
+		radius = radius,
+	}
+	local entities = surface.find_entities_filtered(query) or {}
+	local matches = {}
+	for _, entity in pairs(entities) do
+		if entity and entity.valid and (force_name == nil or (entity.force and entity.force.name == force_name)) then
+			matches[#matches + 1] = entity
+		end
+	end
+	return matches
+end
+
+local function resolve_pipe_state_for_loaders(active, assertion)
+	local loader_refs = collect_loader_refs(assertion)
+	if #loader_refs == 0 then
+		return nil, "No loader references provided"
+	end
+
+	local radius = assertion.radius or 0.12
+	local x_offset = assertion.pipe_x_offset or 0
+	local y_offset = assertion.pipe_y_offset or (1 / 32)
+	local require_force_match = assertion.match_force ~= false
+
+	local resolved = {}
+	local failures = {}
+	for _, reference_name in pairs(loader_refs) do
+		local loaders = world.get_referenced_entities(active, reference_name)
+		if #loaders == 0 then
+			failures[#failures + 1] = reference_name .. ":missing"
+		end
+		for idx, loader in ipairs(loaders) do
+			local key = reference_name .. "#" .. idx
+			if not (loader and loader.valid and loader.surface and loader.surface.valid) then
+				failures[#failures + 1] = key .. ":invalid"
+			else
+				local pipe_name = assertion.pipe_name or (world.base_powered_name(loader.name) .. "-pipe")
+				local pipe_position = {
+					x = loader.position.x + x_offset,
+					y = loader.position.y + y_offset,
+				}
+				local force_name = nil
+				if require_force_match and loader.force and loader.force.name ~= nil then
+					force_name = loader.force.name
+				end
+				local pipes = find_aai_pipe_entities(loader.surface, pipe_name, pipe_position, radius, force_name)
+				resolved[#resolved + 1] = {
+					key = key,
+					loader = loader,
+					pipe_name = pipe_name,
+					position = pipe_position,
+					pipes = pipes,
+				}
+			end
+		end
+	end
+
+	if #failures > 0 then
+		return nil, table.concat(failures, ", ")
+	end
+	return resolved, nil
+end
+
+local function evaluate_aai_pipe_count(active, assertion)
+	local expected_count = assertion.expected_count
+	if type(expected_count) ~= "number" then
+		expected_count = 1
+	end
+	expected_count = math.max(0, math.floor(expected_count))
+
+	local resolved, err = resolve_pipe_state_for_loaders(active, assertion)
+	if resolved == nil then
+		return false, err, nil
+	end
+
+	local failures = {}
+	local extra = {pipes = {}}
+	for _, entry in ipairs(resolved) do
+		local count = #entry.pipes
+		extra.pipes[entry.key] = {
+			count = count,
+			pipe_name = entry.pipe_name,
+			position = entry.position,
+		}
+		if count ~= expected_count then
+			failures[#failures + 1] = entry.key .. ":count-mismatch(" .. tostring(count) .. "!=" .. tostring(expected_count) .. ")"
+		end
+	end
+
+	if #failures > 0 then
+		return false, table.concat(failures, ", "), extra
+	end
+	return true, "AAI helper pipe count matches expected", extra
+end
+
+local function evaluate_aai_pipe_fluid(active, assertion)
+	local resolved, err = resolve_pipe_state_for_loaders(active, assertion)
+	if resolved == nil then
+		return false, err, nil
+	end
+
+	local min_amount = assertion.min_amount
+	if type(min_amount) ~= "number" then
+		min_amount = 0
+	end
+	local max_amount = assertion.max_amount
+	if type(max_amount) ~= "number" then
+		max_amount = nil
+	end
+	local expected_fluid_name = assertion.fluid_name
+	if type(expected_fluid_name) ~= "string" or expected_fluid_name == "" then
+		expected_fluid_name = nil
+	end
+
+	local failures = {}
+	local extra = {pipes = {}}
+	for _, entry in ipairs(resolved) do
+		local pipe = entry.pipes[1]
+		if pipe == nil then
+			failures[#failures + 1] = entry.key .. ":missing-pipe"
+			extra.pipes[entry.key] = {
+				pipe_name = entry.pipe_name,
+				position = entry.position,
+				fluid_name = nil,
+				amount = 0,
+			}
+		else
+			local fluid = pipe.get_fluid(1)
+			local amount = 0
+			local fluid_name = nil
+			if fluid ~= nil then
+				amount = fluid.amount or 0
+				fluid_name = fluid.name
+			end
+			extra.pipes[entry.key] = {
+				pipe_name = entry.pipe_name,
+				position = entry.position,
+				fluid_name = fluid_name,
+				amount = amount,
+			}
+
+			if expected_fluid_name ~= nil and fluid_name ~= expected_fluid_name then
+				failures[#failures + 1] = entry.key .. ":fluid-name-mismatch(" .. tostring(fluid_name) .. "!=" .. tostring(expected_fluid_name) .. ")"
+			end
+			if amount + 0.0001 < min_amount then
+				failures[#failures + 1] = entry.key .. ":amount-below-min(" .. tostring(amount) .. "<" .. tostring(min_amount) .. ")"
+			end
+			if max_amount ~= nil and amount - 0.0001 > max_amount then
+				failures[#failures + 1] = entry.key .. ":amount-above-max(" .. tostring(amount) .. ">" .. tostring(max_amount) .. ")"
+			end
+		end
+	end
+
+	if #failures > 0 then
+		return false, table.concat(failures, ", "), extra
+	end
+	return true, "AAI helper pipe fluid matches expected", extra
+end
 function M.run(active, checkpoint_tick, assertion, call_main_mod)
 	if assertion.type == "structural_consistency" then
 		local snapshot = call_main_mod("get_state_snapshot", active.surface.index)
@@ -391,6 +623,21 @@ function M.run(active, checkpoint_tick, assertion, call_main_mod)
 
 	if assertion.type == "blueprint_build_result" then
 		local passed, message, extra = evaluate_blueprint_result(active, assertion)
+		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
+	end
+
+	if assertion.type == "loader_active_state" then
+		local passed, message, extra = evaluate_loader_active_state(active, assertion)
+		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
+	end
+
+	if assertion.type == "aai_pipe_count" then
+		local passed, message, extra = evaluate_aai_pipe_count(active, assertion)
+		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
+	end
+
+	if assertion.type == "aai_pipe_fluid" then
+		local passed, message, extra = evaluate_aai_pipe_fluid(active, assertion)
 		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
 	end
 

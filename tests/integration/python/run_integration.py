@@ -14,6 +14,11 @@ from .backends.base import RunConfig, cleanup_runtime_dir
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Powered Belts Extended integration suite.")
+    default_extra_mod_paths = [
+        value.strip()
+        for value in os.environ.get("PBE_TEST_EXTRA_MOD_PATHS", "").split(",")
+        if value.strip()
+    ]
     parser.add_argument("--backend", choices=("cli", "rcon"), default=os.environ.get("PBE_TEST_BACKEND", "cli"))
     parser.add_argument(
         "--mod-state",
@@ -41,6 +46,18 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("PBE_TEST_REMOVE_RUNTIME_DIR_ON_EXIT", "true"),
         help="Remove temporary staged runtime directory after each run (default: true).",
     )
+    parser.add_argument(
+        "--extra-mod-path",
+        action="append",
+        default=default_extra_mod_paths,
+        help="Additional mod directory/archive path to stage (repeatable).",
+    )
+    parser.add_argument(
+        "--aai-mode",
+        choices=("default", "lubricated", "expensive"),
+        default=os.environ.get("PBE_TEST_AAI_MODE", "default"),
+        help="Optional AAI Loaders startup mode override for staged runs.",
+    )
     return parser.parse_args()
 
 
@@ -51,6 +68,19 @@ def _parse_bool_option(name: str, value: str) -> bool:
     if normalized == "false":
         return False
     raise ValueError(f"Invalid value for {name}: {value!r}. Expected 'true' or 'false'.")
+
+
+def _parse_extra_mod_paths(values: list[str] | None) -> tuple[Path, ...]:
+    if not values:
+        return ()
+    paths: list[Path] = []
+    for raw in values:
+        for part in str(raw).split(","):
+            trimmed = part.strip()
+            if trimmed == "":
+                continue
+            paths.append(Path(trimmed))
+    return tuple(paths)
 
 
 def _suite_summary(result: dict[str, Any]) -> dict[str, int]:
@@ -244,6 +274,8 @@ def main() -> int:
         remove_runtime_dir_on_exit = _parse_bool_option("--remove-runtime-dir-on-exit", args.remove_runtime_dir_on_exit)
         build_order_modes = _parse_build_order_modes(args.build_order_modes)
         build_order_random_seeds = _parse_build_order_random_seeds(args.build_order_random_seeds)
+        extra_mod_paths = _parse_extra_mod_paths(args.extra_mod_path)
+        aai_mode_override = None if args.aai_mode == "default" else args.aai_mode
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -266,6 +298,8 @@ def main() -> int:
         timeout_seconds=args.timeout_seconds,
         until_tick=args.until_tick,
         remove_runtime_dir_on_exit=remove_runtime_dir_on_exit,
+        extra_mod_paths=extra_mod_paths,
+        aai_mode_override=aai_mode_override,
     )
 
     try:

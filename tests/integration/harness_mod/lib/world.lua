@@ -1162,6 +1162,116 @@ local function apply_build_entity_action(active, action)
 
 end
 
+local function find_loader_pipe_entity(loader, action)
+	if not (loader and loader.valid and loader.surface and loader.surface.valid) then
+		return nil
+	end
+	local base_name = M.base_powered_name(loader.name)
+	local pipe_name = action.pipe_name
+	if type(pipe_name) ~= "string" or pipe_name == "" then
+		pipe_name = base_name .. "-pipe"
+	end
+	local x_offset = action.pipe_x_offset or 0
+	local y_offset = action.pipe_y_offset or (1 / 32)
+	local position = {
+		x = loader.position.x + x_offset,
+		y = loader.position.y + y_offset,
+	}
+	local match_force = action.match_force ~= false
+	local force_name = nil
+	if match_force and loader.force and loader.force.name ~= nil then
+		force_name = loader.force.name
+	end
+
+	local pipe = loader.surface.find_entity(pipe_name, position)
+	if pipe and pipe.valid and (force_name == nil or (pipe.force and pipe.force.name == force_name)) then
+		return pipe
+	end
+
+	local query = {
+		name = pipe_name,
+		position = position,
+		radius = action.radius or 0.12,
+	}
+	for _, candidate in pairs(loader.surface.find_entities_filtered(query) or {}) do
+		if candidate and candidate.valid and (force_name == nil or (candidate.force and candidate.force.name == force_name)) then
+			return candidate
+		end
+	end
+	return nil
+end
+
+local function clear_pipe_fluid(pipe)
+	if not (pipe and pipe.valid) then
+		return
+	end
+	local fluid = pipe.get_fluid(1)
+	if fluid ~= nil and (fluid.amount or 0) > 0 then
+		pipe.remove_fluid({name = fluid.name, amount = fluid.amount})
+	end
+end
+
+local function apply_set_loader_pipe_fluid_action(active, action)
+	local reference_name = action.target_ref or action.loader_ref
+	if type(reference_name) ~= "string" or reference_name == "" then
+		return
+	end
+
+	local loaders = M.get_referenced_entities(active, reference_name)
+	if #loaders == 0 then
+		return
+	end
+
+	local fluid_name = action.fluid_name
+	if type(fluid_name) ~= "string" or fluid_name == "" then
+		fluid_name = "lubricant"
+	end
+	local amount = action.amount
+	if type(amount) ~= "number" then
+		amount = 0
+	end
+	local temperature = action.temperature
+	if type(temperature) ~= "number" then
+		temperature = nil
+	end
+	local clear_existing = action.clear_existing ~= false
+
+	for _, loader in ipairs(loaders) do
+		if loader and loader.valid then
+			local pipe = find_loader_pipe_entity(loader, action)
+			if pipe ~= nil then
+				if clear_existing then
+					clear_pipe_fluid(pipe)
+				end
+				if amount > 0 then
+					local inserted = pipe.insert_fluid({
+						name = fluid_name,
+						amount = amount,
+						temperature = temperature,
+					})
+					if inserted == nil then
+						inserted = 0
+					end
+					if inserted + 0.0001 < amount then
+						log(string.format(
+							"[PBE-HARNESS] set_loader_pipe_fluid partial insert for %s: inserted=%s requested=%s",
+							tostring(loader.name),
+							tostring(inserted),
+							tostring(amount)
+						))
+					end
+				end
+			else
+				log(string.format(
+					"[PBE-HARNESS] set_loader_pipe_fluid could not find pipe for loader=%s at (%.3f, %.3f)",
+					tostring(loader.name),
+					loader.position.x,
+					loader.position.y
+				))
+			end
+		end
+	end
+end
 local function order_deconstruction_for_entity(entity)
 	if not (entity and entity.valid) then
 		return false
@@ -1504,6 +1614,8 @@ function M.apply_action(active, action, call_main_mod)
 		apply_revive_ghosts_action(active, action)
 	elseif action.type == "build_entity" then
 		apply_build_entity_action(active, action)
+	elseif action.type == "set_loader_pipe_fluid" then
+		apply_set_loader_pipe_fluid_action(active, action)
 	elseif action.type == "insert_stateful_power_armor" then
 		apply_insert_stateful_power_armor_action(active, action)
 	elseif action.type == "build_blueprint" then

@@ -104,3 +104,59 @@ The Python runner supports:
 3. `--mod-state both`
 
 Use `both` to run each scenario set twice: once with PoweredBeltsExtended enabled and once disabled.
+
+## Extra Mod Staging and AAI Mode Overrides
+
+The runners can stage additional mods into the temporary runtime and enable them automatically in `mod-list.json`.
+
+- `run_integration.py`: `--extra-mod-path <path>` (repeatable)
+- `run_debug_server.py`: `--extra-mod-path <path>` (repeatable)
+- `run_single_disappearance_diagnosis.py`: `--extra-mod-path <path>` (repeatable)
+
+Each path may be a mod directory or a `.zip` archive.
+
+AAI startup mode can be overridden for staged runs:
+
+- `--aai-mode default` (leave defaults)
+- `--aai-mode lubricated`
+- `--aai-mode expensive`
+
+This is intended for running the same test harness in both AAI operating modes.
+
+## Scenario Gating by Active Mods
+
+Harness scenarios support runtime gating fields:
+
+- `required_mods: string[]`
+- `forbidden_mods: string[]`
+
+Optional AAI-specific mode gating is also supported:
+
+- `required_aai_loader_mode: "lubricated" | "expensive" | string[]`
+- `forbidden_aai_loader_mode: "lubricated" | "expensive" | string[]`
+
+Suite selection applies these filters automatically based on active mods/startup settings in the staged runtime.
+
+Behavior:
+
+1. Filtered-out scenarios are excluded from suite runs and scenario listings.
+2. Direct `run_scenario`/setup calls fail fast for filtered-out scenarios instead of running partial/invalid setups.
+
+## One-Command Full Test Pass
+
+Use the wrapper scripts to run all relevant checks sequentially:
+
+- PowerShell: `scripts/test-all.ps1`
+- Bash: `scripts/test-all.sh`
+
+Sequence:
+
+1. Lua syntax checks for runtime/harness files.
+2. Python compile checks for integration tooling.
+3. Baseline integration run (no extra AAI mod).
+4. AAI lubricated + expensive integration runs (when AAI mod path is provided).
+
+AAI mod path input:
+
+- PowerShell: `-AaiModPath "<path>"` or env `PBE_AAI_MOD_PATH`
+- Bash: `--aai-mod-path <path>` or env `PBE_AAI_MOD_PATH`

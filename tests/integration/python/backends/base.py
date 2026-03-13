@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 import shutil
 import subprocess
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -22,6 +24,8 @@ class RunConfig:
     remove_runtime_dir_on_exit: bool = True
     build_order_mode: str = "normal"
     build_order_seed: int | None = None
+    extra_mod_paths: tuple[Path, ...] = ()
+    aai_mode_override: str | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,112 @@ def _build_test_server_settings(factorio_bin: Path) -> dict[str, object]:
     return settings
 
 
+
+def _read_mod_name_from_info_json_bytes(payload: bytes) -> str | None:
+    try:
+        parsed = json.loads(payload.decode("utf-8-sig"))
+    except Exception:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    name = parsed.get("name")
+    if isinstance(name, str) and name.strip() != "":
+        return name.strip()
+    return None
+
+
+def _read_mod_name_from_directory(mod_dir: Path) -> str | None:
+    info_path = mod_dir / "info.json"
+    if not info_path.exists():
+        return None
+    try:
+        payload = info_path.read_bytes()
+    except Exception:
+        return None
+    return _read_mod_name_from_info_json_bytes(payload)
+
+
+def _read_mod_name_from_zip(mod_archive: Path) -> str | None:
+    try:
+        with zipfile.ZipFile(mod_archive, "r") as archive:
+            candidates = [name for name in archive.namelist() if name.endswith("/info.json") or name == "info.json"]
+            if not candidates:
+                return None
+            candidates.sort(key=len)
+            payload = archive.read(candidates[0])
+    except Exception:
+        return None
+    return _read_mod_name_from_info_json_bytes(payload)
+
+
+def _infer_mod_name_from_path(mod_path: Path) -> str:
+    stem = mod_path.stem if mod_path.is_file() else mod_path.name
+    match = re.match(r"^(.+?)_\d+\.\d+.*$", stem)
+    if match:
+        return match.group(1)
+    return stem
+
+
+def _stage_external_mods(extra_mod_paths: tuple[Path, ...], mods_dir: Path) -> list[str]:
+    staged_mod_names: list[str] = []
+    seen_names: set[str] = set()
+
+    for raw_path in extra_mod_paths:
+        mod_path = Path(raw_path).expanduser().resolve()
+        if not mod_path.exists():
+            raise FileNotFoundError(f"Extra mod path does not exist: {mod_path}")
+
+        if mod_path.is_dir():
+            destination = mods_dir / mod_path.name
+            if destination.exists():
+                raise RuntimeError(f"Duplicate staged mod directory name: {destination.name}")
+            shutil.copytree(mod_path, destination, dirs_exist_ok=False)
+            mod_name = _read_mod_name_from_directory(mod_path)
+        else:
+            destination = mods_dir / mod_path.name
+            if destination.exists():
+                raise RuntimeError(f"Duplicate staged mod archive name: {destination.name}")
+            shutil.copy2(mod_path, destination)
+            mod_name = _read_mod_name_from_zip(mod_path)
+
+        if mod_name is None:
+            mod_name = _infer_mod_name_from_path(mod_path)
+
+        if mod_name not in seen_names:
+            staged_mod_names.append(mod_name)
+            seen_names.add(mod_name)
+
+    return staged_mod_names
+
+
+def _stage_aai_mode_override_mod(mods_dir: Path, aai_mode_override: str | None) -> str | None:
+    if aai_mode_override not in {"lubricated", "expensive"}:
+        return None
+
+    mod_name = "PBEAAILoadersModeOverride"
+    mod_dir = mods_dir / f"{mod_name}_0.1.0"
+    mod_dir.mkdir(parents=True, exist_ok=False)
+
+    info = {
+        "name": mod_name,
+        "version": "0.1.0",
+        "title": "PBE AAI Loaders Mode Override",
+        "author": "PoweredBeltsExtended Tests",
+        "factorio_version": "2.0",
+        "dependencies": ["base", "? aai-loaders"],
+    }
+    (mod_dir / "info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+
+    settings_updates = (
+        "local setting = data.raw[\"string-setting\"] and data.raw[\"string-setting\"][\"aai-loaders-mode\"]\n"
+        "if setting then\n"
+        f"  setting.default_value = {json.dumps(aai_mode_override)}\n"
+        "end\n"
+    )
+    (mod_dir / "settings-updates.lua").write_text(settings_updates, encoding="utf-8")
+
+    return mod_name
+
 def stage_runtime(config: RunConfig) -> RuntimePaths:
     repo_root = config.repo_root.resolve()
     artifacts_dir = config.artifacts_dir.resolve()
@@ -182,14 +292,26 @@ def stage_runtime(config: RunConfig) -> RuntimePaths:
         f"M.default_seed = {json.dumps(build_order_seed)}\n"
         "return M\n"
     )
-    (harness_dest / "lib" / "build_order_config.lua").write_text(harness_build_order_config, encoding="utf-8")
+    (harness_dest / "lib" / "build_order_config.lua").write_text(harness_build_order_config, encoding="utf-8")    staged_external_mod_names = _stage_external_mods(config.extra_mod_paths, mods_dir)
+    aai_mode_override_mod = _stage_aai_mode_override_mod(mods_dir, config.aai_mode_override)
+    if aai_mode_override_mod is not None:
+        staged_external_mod_names.append(aai_mode_override_mod)
 
-    mod_entries = [
-        {"name": "base", "enabled": True},
-        {"name": "PBEIntegrationHarness", "enabled": True},
-    ]
+    mod_entries: list[dict[str, object]] = []
+    enabled_mod_names: set[str] = set()
+
+    def add_enabled_mod(name: str) -> None:
+        if name in enabled_mod_names:
+            return
+        mod_entries.append({"name": name, "enabled": True})
+        enabled_mod_names.add(name)
+
+    add_enabled_mod("base")
     if config.powered_belts_enabled:
-        mod_entries.insert(1, {"name": "PoweredBeltsExtended", "enabled": True})
+        add_enabled_mod("PoweredBeltsExtended")
+    for mod_name in staged_external_mod_names:
+        add_enabled_mod(mod_name)
+    add_enabled_mod("PBEIntegrationHarness")
 
     mod_list = {"mods": mod_entries}
     (user_data_dir / "mods" / "mod-list.json").write_text(json.dumps(mod_list, indent=2), encoding="utf-8")

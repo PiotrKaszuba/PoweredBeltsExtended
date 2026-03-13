@@ -14,6 +14,11 @@ from .backends.base import RunConfig, RuntimePaths, cleanup_runtime_dir, find_fr
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Start a local debug Factorio server for harness inspection.")
+    default_extra_mod_paths = [
+        value.strip()
+        for value in os.environ.get("PBE_DEBUG_EXTRA_MOD_PATHS", "").split(",")
+        if value.strip()
+    ]
     parser.add_argument("--factorio-bin", type=Path, default=None, help="Path to factorio executable.")
     parser.add_argument("--artifacts-dir", type=Path, default=None, help="Artifacts output directory.")
     parser.add_argument(
@@ -56,6 +61,18 @@ def parse_args() -> argparse.Namespace:
         default=(int(os.environ["PBE_DEBUG_BUILD_ORDER_SEED"]) if "PBE_DEBUG_BUILD_ORDER_SEED" in os.environ else None),
         help="Optional seed for random build order mode.",
     )
+    parser.add_argument(
+        "--extra-mod-path",
+        action="append",
+        default=default_extra_mod_paths,
+        help="Additional mod directory/archive path to stage (repeatable).",
+    )
+    parser.add_argument(
+        "--aai-mode",
+        choices=("default", "lubricated", "expensive"),
+        default=os.environ.get("PBE_DEBUG_AAI_MODE", "default"),
+        help="Optional AAI Loaders startup mode override for staged debug runs.",
+    )
     return parser.parse_args()
 
 
@@ -66,6 +83,19 @@ def _parse_bool_option(name: str, value: str) -> bool:
     if normalized == "false":
         return False
     raise RuntimeError(f"Invalid value for {name}: {value!r}. Expected 'true' or 'false'.")
+
+
+def _parse_extra_mod_paths(values: list[str] | None) -> tuple[Path, ...]:
+    if not values:
+        return ()
+    paths: list[Path] = []
+    for raw in values:
+        for part in str(raw).split(","):
+            trimmed = part.strip()
+            if trimmed == "":
+                continue
+            paths.append(Path(trimmed))
+    return tuple(paths)
 
 
 def _resolve_factorio_bin(arg_value: Path | None) -> Path:
@@ -181,6 +211,8 @@ def main() -> int:
     args = parse_args()
     try:
         remove_runtime_dir_on_exit = _parse_bool_option("--remove-runtime-dir-on-exit", args.remove_runtime_dir_on_exit)
+        extra_mod_paths = _parse_extra_mod_paths(args.extra_mod_path)
+        aai_mode_override = None if args.aai_mode == "default" else args.aai_mode
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -211,6 +243,8 @@ def main() -> int:
         remove_runtime_dir_on_exit=remove_runtime_dir_on_exit,
         build_order_mode=args.build_order_mode,
         build_order_seed=args.build_order_seed,
+        extra_mod_paths=extra_mod_paths,
+        aai_mode_override=aai_mode_override,
     )
 
     runtime: RuntimePaths | None = None
@@ -260,6 +294,8 @@ def main() -> int:
     print(f"remove_runtime_dir_on_exit: {args.remove_runtime_dir_on_exit}")
     print(f"build_order_mode: {args.build_order_mode}")
     print(f"build_order_seed: {args.build_order_seed}")
+    print(f"aai_mode: {args.aai_mode}")
+    print(f"extra_mod_paths: {args.extra_mod_path if args.extra_mod_path else []}")
     print(f"Console log: {console_log_path}")
     print("Press Ctrl+C to stop the server.")
 

@@ -18,6 +18,11 @@ def _log_step(message: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Diagnose item disappearance in one integration scenario or all scenarios.")
+    default_extra_mod_paths = [
+        value.strip()
+        for value in os.environ.get("PBE_DIAG_EXTRA_MOD_PATHS", "").split(",")
+        if value.strip()
+    ]
     parser.add_argument("scenario_id", nargs="?", default=None)
     parser.add_argument(
         "--exclude-scenario-ids",
@@ -40,7 +45,32 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Exact elapsed scenario ticks to capture per-iteration update-loop probes.",
     )
+    parser.add_argument(
+        "--extra-mod-path",
+        action="append",
+        default=default_extra_mod_paths,
+        help="Additional mod directory/archive path to stage (repeatable).",
+    )
+    parser.add_argument(
+        "--aai-mode",
+        choices=("default", "lubricated", "expensive"),
+        default=os.environ.get("PBE_DIAG_AAI_MODE", "default"),
+        help="Optional AAI Loaders startup mode override for staged diagnosis runs.",
+    )
     return parser.parse_args()
+
+
+def _parse_extra_mod_paths(values: list[str] | None) -> tuple[Path, ...]:
+    if not values:
+        return ()
+    paths: list[Path] = []
+    for raw in values:
+        for part in str(raw).split(","):
+            trimmed = part.strip()
+            if trimmed == "":
+                continue
+            paths.append(Path(trimmed))
+    return tuple(paths)
 
 
 def _to_lua(value: Any) -> str:
@@ -703,6 +733,8 @@ def main() -> int:
     artifacts_dir = args.artifacts_dir or (repo_root / "tests" / "artifacts")
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     remove_runtime = args.remove_runtime_dir_on_exit == "true"
+    extra_mod_paths = _parse_extra_mod_paths(args.extra_mod_path)
+    aai_mode_override = None if args.aai_mode == "default" else args.aai_mode
 
     config = RunConfig(
         factorio_bin=factorio_bin,
@@ -714,6 +746,8 @@ def main() -> int:
         remove_runtime_dir_on_exit=remove_runtime,
         build_order_mode=args.build_order_mode,
         build_order_seed=args.build_order_seed,
+        extra_mod_paths=extra_mod_paths,
+        aai_mode_override=aai_mode_override,
     )
 
     _log_step("Staging runtime directory.")

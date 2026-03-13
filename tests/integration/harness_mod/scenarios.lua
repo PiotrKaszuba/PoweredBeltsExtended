@@ -794,6 +794,197 @@ local function default_scenarios()
 			},
 		},
 		make_multi_io_planner_blueprint_flicker_scenario(),
+				{
+			id = "aai_lubricated_no_lubricant_after_powerup",
+			layout_id = "aai_loader_line",
+			required_mods = {"aai-loaders"},
+			required_aai_loader_mode = "lubricated",
+			max_tick = 900,
+			settings_overrides = {
+				underground_item_transfer_mode = "preserve-full-state",
+				operations_per_tick = 128,
+			},
+			actions = {
+				{tick = 0, type = "fill_inventory", target_ref = "source", stacks = {{name = "iron-plate", count = 40}}},
+				{tick = 0, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 180, type = "set_surface_daylight", mode = "full-day"},
+			},
+			checkpoints = {
+				{
+					tick = 260,
+					assertions = {
+						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = false},
+						{type = "aai_pipe_count", loader_refs = {"loader_out", "loader_in"}, expected_count = 1},
+						{type = "structural_consistency"},
+					},
+				},
+				{
+					tick = 900,
+					assertions = {
+						{type = "sink_count_less_than", sink_ref = "sink", item_name = "iron-plate", max_count = 0},
+						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = false},
+						{type = "structural_consistency"},
+					},
+				},
+			},
+		},
+		{
+			id = "aai_lubricated_power_cycle_fluid_continuity",
+			layout_id = "aai_loader_line",
+			required_mods = {"aai-loaders"},
+			required_aai_loader_mode = "lubricated",
+			max_tick = 1000,
+			settings_overrides = {
+				underground_item_transfer_mode = "preserve-full-state",
+				operations_per_tick = 128,
+			},
+			actions = {
+				{tick = 0, type = "fill_inventory", target_ref = "source", stacks = {{name = "iron-plate", count = 80}}},
+				{tick = 0, type = "set_loader_pipe_fluid", target_ref = "loader_all", fluid_name = "lubricant", amount = 30},
+				{tick = 160, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 320, type = "set_surface_daylight", mode = "full-day"},
+			},
+			checkpoints = {
+				{
+					tick = 120,
+					assertions = {
+						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = true},
+						{type = "aai_pipe_count", loader_refs = {"loader_out", "loader_in"}, expected_count = 1},
+						{type = "aai_pipe_fluid", loader_refs = {"loader_out", "loader_in"}, fluid_name = "lubricant", min_amount = 0.1},
+						{type = "structural_consistency"},
+					},
+				},
+				{
+					tick = 260,
+					assertions = {
+						{type = "sink_count_less_than", sink_ref = "sink", item_name = "iron-plate", max_count = 79},
+						{type = "structural_consistency"},
+					},
+				},
+				{
+					tick = 380,
+					assertions = {
+						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = true},
+						{type = "aai_pipe_count", loader_refs = {"loader_out", "loader_in"}, expected_count = 1},
+						{type = "aai_pipe_fluid", loader_refs = {"loader_out", "loader_in"}, fluid_name = "lubricant", min_amount = 0.1},
+						{type = "structural_consistency"},
+					},
+				},
+				{
+					tick = 1000,
+					assertions = {
+						{
+							type = "transfer_complete",
+							source_ref = "source",
+							sink_ref = "sink",
+							expected_contents = {{name = "iron-plate", count = 80}},
+							source_should_be_empty = true,
+						},
+						{type = "structural_consistency"},
+					},
+				},
+			},
+		},
+		{
+			id = "aai_lubricated_adjacent_repeated_power_cycles",
+			layout_id = "aai_loader_dual_line_adjacent",
+			required_mods = {"aai-loaders"},
+			required_aai_loader_mode = "lubricated",
+			max_tick = 1300,
+			settings_overrides = {
+				underground_item_transfer_mode = "preserve-full-state",
+				operations_per_tick = 128,
+			},
+			actions = {
+				{
+					tick = 0,
+					type = "fill_inventory",
+					target_ref = "source",
+					stacks = {
+						{name = "iron-plate", count = 80, target_ref = "source_top"},
+						{name = "iron-plate", count = 80, target_ref = "source_bottom"},
+					},
+				},
+				{tick = 0, type = "set_loader_pipe_fluid", target_ref = "loader_all", fluid_name = "lubricant", amount = 40},
+				{tick = 160, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 240, type = "set_surface_daylight", mode = "full-day"},
+				{tick = 320, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 400, type = "set_surface_daylight", mode = "full-day"},
+				{tick = 480, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 560, type = "set_surface_daylight", mode = "full-day"},
+				{tick = 640, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 720, type = "set_surface_daylight", mode = "full-day"},
+			},
+			checkpoints = {
+				{
+					tick = 780,
+					assertions = {
+						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = true},
+						{type = "aai_pipe_count", loader_ref = "loader_all", expected_count = 1},
+						{type = "structural_consistency"},
+					},
+				},
+				{
+					tick = 1300,
+					assertions = {
+						{
+							type = "transfer_complete",
+							source_ref = "source",
+							sink_ref = "sink",
+							expected_contents = {{name = "iron-plate", count = 160}},
+							source_should_be_empty = true,
+						},
+						{type = "structural_consistency"},
+					},
+				},
+			},
+		},
+		{
+			id = "aai_expensive_power_only_gate",
+			layout_id = "aai_loader_line",
+			required_mods = {"aai-loaders"},
+			required_aai_loader_mode = "expensive",
+			max_tick = 900,
+			settings_overrides = {
+				underground_item_transfer_mode = "preserve-full-state",
+				operations_per_tick = 128,
+			},
+			actions = {
+				{tick = 0, type = "fill_inventory", target_ref = "source", stacks = {{name = "iron-plate", count = 60}}},
+				{tick = 160, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 320, type = "set_surface_daylight", mode = "full-day"},
+			},
+			checkpoints = {
+				{
+					tick = 260,
+					assertions = {
+						{type = "sink_count_less_than", sink_ref = "sink", item_name = "iron-plate", max_count = 59},
+						{type = "structural_consistency"},
+					},
+				},
+				{
+					tick = 380,
+					assertions = {
+						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = true},
+						{type = "aai_pipe_count", loader_refs = {"loader_out", "loader_in"}, expected_count = 0},
+						{type = "structural_consistency"},
+					},
+				},
+				{
+					tick = 900,
+					assertions = {
+						{
+							type = "transfer_complete",
+							source_ref = "source",
+							sink_ref = "sink",
+							expected_contents = {{name = "iron-plate", count = 60}},
+							source_should_be_empty = true,
+						},
+						{type = "structural_consistency"},
+					},
+				},
+			},
+		},
 		{
 			id = "scan_recovery_smoke",
 			layout_id = "straight_line",
