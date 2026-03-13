@@ -122,13 +122,13 @@ When `aai-loaders` is active, Powered Belts Extended applies targeted compatibil
 
 #### Why This Is Needed
 
-AAI Loaders tracks lubricated loaders internally and manages helper pipe entities. Without targeted handling, fast-replace power toggles leaves invalid AAI loader entry that is not initialized properly without built event being raised (and as such - doesn't consume lubricant) and also later cleans up the pipe of a new loader (i.e. powered-up loader) that according to AAI internals - might "inherit" the stale pipe after invalid entity instead of creating a fresh one.
+AAI Loaders tracks lubricated loaders internally and manages helper pipe entities. Without targeted handling, fast-replace power toggles leaves invalid AAI loader entry that is not initialized properly without built event being raised (and as such - doesn't consume lubricant). The removal of the old pipe is needed to make space for a new one that will belong to powered-up loader that according to AAI internals - might otherwise "inherit" the stale pipe after, now an invalid entity, instead of creating a fresh one - which would later cause removal of currently used helper pipe that originally belonged to that invalid entity.
 
 #### Compatibility Effects
 
 - In AAI `lubricated` mode: loader requires both PBE power and AAI lubricant.
 - In AAI `expensive` mode: loader requires PBE power only.
-- Prevents invalid states across repeated brownouts (lost registration/orphan loader state).
+- Prevents invalid states and significant fluid loss across repeated brownouts (lost registration/orphan loader state).
 
 #### Limits / Fragility
 
@@ -139,7 +139,7 @@ This compatibility relies on current AAI conventions:
 - Helper pipe name: `<powered_loader_name>-pipe`
 - Helper pipe position: `{x = loader.x, y = loader.y + 1/32}`
 
-If a future AAI release changes naming/placement/ownership internals, PBE compatibility is best-effort and will fail soft (normal belt power behavior continues, and warnings are logged).
+If a future AAI Loaders release changes naming/placement/ownership internals, PBE compatibility is best-effort and will fail soft (normal belt power behavior continues, and warnings are logged).
 
 #### Tested Versions
 
