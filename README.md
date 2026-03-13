@@ -137,6 +137,8 @@ PBE avoids that by:
 
 #### Limits / Fragility
 
+Each power-down and power-up cycle causes lubricated AAI Loader to consume initial lubricant upfront again (1.0 or rate-per-minute if higher than 1.0) and resets its refresh cycle.
+
 This compatibility relies on current AAI conventions:
 
 - Helper pipe name: `<powered_loader_name>-pipe`
