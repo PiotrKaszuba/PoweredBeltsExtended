@@ -3,6 +3,8 @@ local utils = require("modules.utils")
 local compatibility = {}
 
 local AAI_LOADERS_MOD = "aai-loaders"
+local AAI_MODE_SETTING_NAME = "aai-loaders-mode"
+local AAI_MODE_LUBRICATED = "lubricated"
 
 local AAI_LOADER_PREFIX = "aai-"
 local AAI_PIPE_Y_OFFSET = 1 / 32
@@ -56,7 +58,27 @@ local function warn_once(warn_key, message)
 end
 
 local function is_aai_loaders_active()
-	return script ~= nil and script.active_mods ~= nil and script.active_mods[AAI_LOADERS_MOD] ~= nil
+	return script.active_mods[AAI_LOADERS_MOD] ~= nil
+end
+
+local function get_active_aai_loader_mode()
+	local setting = settings.startup[AAI_MODE_SETTING_NAME]
+	if setting == nil or type(setting.value) ~= "string" then
+		return nil
+	end
+	return setting.value
+end
+
+local function is_aai_pipe_mode_enabled()
+	local mode = get_active_aai_loader_mode()
+	if mode == nil then
+		return false
+	end
+	return mode == AAI_MODE_LUBRICATED
+end
+
+local function has_entity_prototype(entity_name)
+	return prototypes.entity[entity_name] ~= nil
 end
 
 local function get_snapshot(surface_key, pos_key)
@@ -159,6 +181,12 @@ local function find_pipe_entity(surface, pipe_name, loader_position, force_name)
 	if not (surface and surface.valid and type(pipe_name) == "string" and pipe_name ~= "") then
 		return nil
 	end
+	if not is_aai_pipe_mode_enabled() then
+		return nil
+	end
+	if not has_entity_prototype(pipe_name) then
+		return nil
+	end
 	local pipe_position = get_pipe_position(loader_position)
 	local entity = surface.find_entity(pipe_name, pipe_position)
 	if entity ~= nil and entity.valid and (force_name == nil or entity.force.name == force_name) then
@@ -210,6 +238,14 @@ local function try_restore_pipe_fluid(loader_entity, warn_key_suffix)
 
 	local expected_loader_name = utils.strip_unpowered_prefix(loader_entity.name)
 	if snapshot.loader_name ~= expected_loader_name then
+		clear_snapshot_and_pending(surface_key, pos_key)
+		return true
+	end
+	if not is_aai_pipe_mode_enabled() then
+		clear_snapshot_and_pending(surface_key, pos_key)
+		return true
+	end
+	if not has_entity_prototype(snapshot.pipe_name) then
 		clear_snapshot_and_pending(surface_key, pos_key)
 		return true
 	end
@@ -284,6 +320,9 @@ function compatibility.on_pre_replace(entity, new_name, power_up)
 	end
 	local pos_key = utils.get_entity_position_key(entity)
 	clear_snapshot_and_pending(surface_key, pos_key)
+	if not is_aai_pipe_mode_enabled() then
+		return context
+	end
 
 	local pipe_name = get_pipe_name(old_name)
 	local pipe = find_pipe_entity(surface, pipe_name, entity.position, entity.force and entity.force.name or nil)
@@ -402,6 +441,12 @@ end
 
 function compatibility.on_tick()
 	if not is_aai_loaders_active() then
+		return
+	end
+	if not is_aai_pipe_mode_enabled() then
+		local compat_storage = ensure_compat_storage()
+		compat_storage.aai_pipe_fluid_snapshots = {}
+		compat_storage.aai_pending_restores = {}
 		return
 	end
 

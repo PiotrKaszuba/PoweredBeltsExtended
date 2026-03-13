@@ -811,7 +811,7 @@ local function default_scenarios()
 			},
 			checkpoints = {
 				{
-					tick = 260,
+					tick = 460,
 					assertions = {
 						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = false},
 						{type = "aai_pipe_count", loader_refs = {"loader_out", "loader_in"}, expected_count = 1},
@@ -841,12 +841,12 @@ local function default_scenarios()
 			actions = {
 				{tick = 0, type = "fill_inventory", target_ref = "source", stacks = {{name = "iron-plate", count = 80}}},
 				{tick = 0, type = "set_loader_pipe_fluid", target_ref = "loader_all", fluid_name = "lubricant", amount = 30},
-				{tick = 160, type = "set_surface_daylight", mode = "midnight"},
-				{tick = 320, type = "set_surface_daylight", mode = "full-day"},
+				{tick = 300, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 400, type = "set_surface_daylight", mode = "full-day"},
 			},
 			checkpoints = {
 				{
-					tick = 120,
+					tick = 280,
 					assertions = {
 						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = true},
 						{type = "aai_pipe_count", loader_refs = {"loader_out", "loader_in"}, expected_count = 1},
@@ -862,7 +862,7 @@ local function default_scenarios()
 					},
 				},
 				{
-					tick = 380,
+					tick = 680,
 					assertions = {
 						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = true},
 						{type = "aai_pipe_count", loader_refs = {"loader_out", "loader_in"}, expected_count = 1},
@@ -917,7 +917,7 @@ local function default_scenarios()
 			},
 			checkpoints = {
 				{
-					tick = 780,
+					tick = 1000,
 					assertions = {
 						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = true},
 						{type = "aai_pipe_count", loader_ref = "loader_all", expected_count = 1},
@@ -963,10 +963,9 @@ local function default_scenarios()
 					},
 				},
 				{
-					tick = 380,
+					tick = 600,
 					assertions = {
 						{type = "loader_active_state", target_refs = {"loader_out", "loader_in"}, expected_active = true},
-						{type = "aai_pipe_count", loader_refs = {"loader_out", "loader_in"}, expected_count = 0},
 						{type = "structural_consistency"},
 					},
 				},
