@@ -24,6 +24,8 @@ This includes vanilla and modded prototypes present in the game.
 
 Helper power entities and unpowered belt variants are localized and hidden from Factoriopedia to reduce UI clutter.
 
+---
+
 ### Power Usage Scales by Entity
 Power draw is computed from belt speed and entity type, then scaled by startup settings and efficiency research. Speed scaling is normalized around yellow belt speed (`0.03125`) and supports an exponent startup setting: `(belt_speed^e) / (yellow_belt_speed^e)`.
 
@@ -37,24 +39,85 @@ Default type multipliers:
 
 Underground belt power is calculated from the pair’s maximum segment length, plus 2 for down/up transitions, then divided by 2 so each end consumes half.
 
+---
+
 ### On/Off Behavior During Brownouts
-Belts are switched between powered and unpowered variants based on local stored energy.
+Belts switch between powered and unpowered variants based on stored energy in their hidden power interface.
 
-- If energy falls below the configured buffer-percentage threshold, the entity is powered down.
-- When energy recovers to that threshold, it powers back up.
+- If stored energy drops below the configured threshold, the entity powers down.
+- When stored energy rises back to the threshold, it powers up again.
 
-Note: behavior is threshold-based (on/off), not gradual speed throttling.
+This is a threshold-based on/off system, not gradual speed throttling.
 
 In edge cases, this means a tiny power source can keep many belts running as long as they do not drop below the threshold.
 
-Entities that are currently marked for deconstruction won't be powered up or down, but still drain power. This is to prevent overriding the force blueprint build when the entity is marked for deconstruction and a ghost entity is placed on top of it. If the entity was powered up or down it would remove the ghost entity.
-It should not interact with the power up/down logic as entities marked for deconstruction (belts, undergrounds, splitters) are stopped regardless.
+During brownouts, different entity types may switch at different times depending on buffer size, input flow limit, and threshold settings. This can stall item lines and make recovery harder, especially on fuel routes.
+
+Entities marked for deconstruction are not toggled by this logic to avoid interfering with planner/ghost behavior.
+
+---
+
+### Power Buffer Mechanics (Technical)
+For each powered belt entity:
+
+- `energy_usage = ei` (kW)
+- `input_flow_limit = ei * ifl_mult + ifl_flat` (kW)
+- `buffer_capacity = ei * bc_mult` (kJ)
+- `required_energy = min(buffer_capacity, buffer_capacity * threshold_pct + threshold_flat)` (kJ)
+
+Approximate timing (from idealized states):
+
+- Power-down time after outage:  
+  `t_off ~= (buffer_capacity - required_energy) / ei`
+- Power-up time from empty buffer:  
+  `t_on ~= required_energy / max(input_flow_limit - ei, 0)`
+
+Notes:
+- `input_flow_limit <= ei` can prevent recovery from empty buffer.
+- Flat terms (`ifl_flat`, `threshold_flat`) can bias behavior between low- and high-usage entities.
+- Multiplier-only tuning is usually best when you want similar behavior across entity types.
+
+---
+
+### Preset Modes
+- `default`  
+  Preserves legacy behavior. Higher-energy entities generally charge more slowly relative to their demand, so different entity types (and often higher tiers) may power up/down at different times during brownouts.
+
+- `synchronized`  
+  Uses ratio-based tuning (typically multiplier-driven, with little or no flat offsets) so different belt entities are designed to switch at similar times.  
+  It is also tuned so idealized full-charge power-up time and full-discharge power-down time are equal.
+
+- `responsive`  
+  Builds on `synchronized`, but with smaller buffers and stronger recharge headroom for faster reaction to power changes.  
+  Includes hysteresis (separate power-up and power-down thresholds) to reduce rapid on/off flicker in unstable grids and limit replacement churn/UPS overhead.
+
+- `custom`  
+  Enables manual control of detailed parameters. Default custom values match `default` behavior so switching to `custom` does not change behavior until edited.
+
+Notes:
+- Behavior still depends on actual grid saturation and competing consumers in the same electric priority group.
+- `synchronized` is a target behavior, not a strict guarantee in every network state.
+
+---
+
+On your startup-setting question (`secondary-input` vs `primary-input`):  
+I would not expose this as a normal setting. If you add it, make it an advanced startup option with strong warning text.
+
+Why:
+- `primary-input` can make belts win power over many other machines during shortages.
+- It can create surprising factory behavior and balance issues.
+- It increases support/debug complexity.
+
+Practical compromise:
+- Keep default `secondary-input`.
+- Optionally add hidden advanced startup enum: `secondary-input` (default), `primary-input` (experimental).
+
+---
 
 ### Underground Belt Item Safety
 
 In similar mods (and originally in Powered Belts) items in underground belts disappear due to sequential entity replacement which immediately breaks their transport lines and removes held items from the game. 
 This version implements replacement logic that preserves items in a temporary inventory while entities are swapped and then places them back in their original positions if possible - otherwise, as a fallback, items are spilled at the underground belt's position.
-
 
 ---
 
