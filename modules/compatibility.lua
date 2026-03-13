@@ -195,35 +195,6 @@ local function find_powered_aai_loader_entity(surface, position)
 	return nil
 end
 
-local function capture_fluid_snapshot(pipe)
-	if not (pipe and pipe.valid) then
-		return nil
-	end
-	local fluid = pipe.get_fluid(1)
-	if fluid == nil then
-		return nil
-	end
-	local amount = fluid.amount or 0
-	if amount <= 0 then
-		return nil
-	end
-	return {
-		name = fluid.name,
-		amount = amount,
-		temperature = fluid.temperature,
-	}
-end
-
-local function clear_pipe_fluid(pipe)
-	if not (pipe and pipe.valid) then
-		return
-	end
-	local existing = pipe.get_fluid(1)
-	if existing ~= nil and existing.amount and existing.amount > 0 then
-		pipe.remove_fluid({name = existing.name, amount = existing.amount})
-	end
-end
-
 local function try_restore_pipe_fluid(loader_entity, warn_key_suffix)
 	if not (loader_entity and loader_entity.valid and loader_entity.surface and loader_entity.surface.valid) then
 		return false
@@ -258,7 +229,6 @@ local function try_restore_pipe_fluid(loader_entity, warn_key_suffix)
 		return false
 	end
 
-	clear_pipe_fluid(pipe)
 	local inserted = pipe.insert_fluid(snapshot.fluid)
 	if inserted == nil then
 		inserted = 0
@@ -317,7 +287,7 @@ function compatibility.on_pre_replace(entity, new_name, power_up)
 
 	local pipe_name = get_pipe_name(old_name)
 	local pipe = find_pipe_entity(surface, pipe_name, entity.position, entity.force and entity.force.name or nil)
-	if pipe == nil then
+	if pipe == nil or not pipe.valid then
 		warn_once(
 			"missing-powerdown-pipe:" .. tostring(surface_key) .. ":" .. pos_key,
 			"Could not find AAI pipe on power-down replace at " .. pos_key .. " on surface " .. tostring(surface_key) .. "."
@@ -325,25 +295,36 @@ function compatibility.on_pre_replace(entity, new_name, power_up)
 		return context
 	end
 
-	local snapshot_fluid = capture_fluid_snapshot(pipe)
-	if snapshot_fluid ~= nil then
+	
+	local network_fluid = pipe.get_fluid(1)
+	local network_capacity, pipe_fluidbox, pipe_force, pipe_volume, restore_fluid = nil, nil, nil, nil, nil
+	if network_fluid ~= nil then
+		pipe_fluidbox = pipe.fluidbox
+		network_capacity = pipe_fluidbox.get_capacity(1)
+		pipe_force = pipe.force and pipe.force.name or nil
+		pipe_volume = pipe.prototype.fluidbox_prototypes[1].volume
+
+		restore_fluid = network_fluid.amount - (network_capacity - pipe_volume)
+		if restore_fluid <= 0 then restore_fluid = nil end
+	end
+	
+	local is_mined = pipe.mine{raise_destroyed=false, ignore_minable=true}
+	if not is_mined then is_mined = pipe.destroy() end
+	if not is_mined then
+		warn_once(
+			"destroy-pipe-failed:" .. tostring(surface_key) .. ":" .. pos_key,
+			"Failed to destroy AAI pipe at " .. pos_key .. " on surface " .. tostring(surface_key)
+		)
+	end
+
+	if restore_fluid ~= nil then
 		set_snapshot(surface_key, pos_key, {
 			loader_name = utils.strip_unpowered_prefix(old_name),
 			pipe_name = pipe_name,
-			force_name = pipe.force and pipe.force.name or nil,
+			force_name = pipe_force,
 			position = copy_position(entity.position),
-			fluid = snapshot_fluid,
+			fluid = {name=network_fluid.name, amount=restore_fluid, temperature=network_fluid.temperature},
 		})
-	end
-
-	local ok_destroy, destroy_error = pcall(function()
-		pipe.destroy()
-	end)
-	if not ok_destroy then
-		warn_once(
-			"destroy-pipe-failed:" .. tostring(surface_key) .. ":" .. pos_key,
-			"Failed to destroy AAI pipe at " .. pos_key .. " on surface " .. tostring(surface_key) .. ": " .. tostring(destroy_error)
-		)
 	end
 
 	return context
