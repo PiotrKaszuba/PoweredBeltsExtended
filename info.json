@@ -10,9 +10,11 @@
     "dependencies": [
         "base >= 2.0",
         "? black-rubber-belts-remastered",
+        "? aai-loaders",
         "(?) loader-utils",
         "! PoweredBelts",
         "! ElectricPoweredBelts",
-        "! ElectricPoweredBeltsFixed"
+        "! ElectricPoweredBeltsFixed",
+        "! disastercore-belts"
     ]
 }

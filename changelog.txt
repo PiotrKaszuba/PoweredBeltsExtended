@@ -1,8 +1,12 @@
 ---------------------------------------------------------------------------------------------------
 Version: 1.3.1
-Date: 2026.3.06
+Date: 2026.3.13
   Changes:
     - Power entities now inherit more icon data from original entities (compatibility with Black Rubber Belts - Remastered - fixes power overview icons)
+    - Added targeted compatibility with AAI Loaders - ensuring correct lubricated loaders lifecycle (that consume lubricant and power).
+    - Loader Utilities mod now loads before this mod preventing crashes.
+    - Localization of modded entities is now correctly applied in some cases (i.e. from Loader Utilities).
+    - Loaders are less likely to lose their direction/snap incorrectly after replacement.
 ---------------------------------------------------------------------------------------------------
 Version: 1.3.0
 Date: 2026.3.05

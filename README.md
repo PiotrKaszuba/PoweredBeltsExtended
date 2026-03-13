@@ -107,6 +107,56 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
 
 ---
 
+## Compatibility: 
+
+### AAI Loaders
+
+#### Implemented Behavior
+
+When `aai-loaders` is active, Powered Belts Extended applies targeted compatibility logic for AAI loader entities only (`aai-*` / `unpowered-aai-*`).
+
+- Power-up replacement (`unpowered-aai-*` -> `aai-*`) is created with `raise_built=true`.
+- Power-down replacement (`aai-*` -> `unpowered-aai-*`) proactively removes the AAI helper pipe before swap. Unpowered loaders are purposefully not tracked by AAI loaders mod.
+- Compatibility logic is scoped; non-AAI entities keep the normal replacement flow and without raising events.
+
+#### Why This Is Needed
+
+AAI Loaders tracks lubricated loaders internally and manages helper pipe entities. Without targeted handling, fast-replace power toggles leaves invalid AAI loader entry that is not initialized properly without built event being raised (and as such - doesn't consume lubricant) and also later cleans up the pipe of a new loader (i.e. powered-up loader) that according to AAI internals - might "inherit" the stale pipe after invalid entity instead of creating a fresh one.
+
+PBE avoids that by:
+
+- Capturing helper pipe fluid state before power-down replacement.
+- Destroying the old helper pipe before swapping the loader (on power down).
+- Restoring captured fluid into the newly created pipe after power-up.
+
+#### Compatibility Effects
+
+- In AAI `lubricated` mode: loader requires both PBE power and AAI lubricant.
+- In AAI `expensive` mode: loader requires PBE power only.
+- Prevents invalid states across repeated brownouts (lost registration/orphan loader state).
+
+#### Limits / Fragility
+
+This compatibility relies on current AAI conventions:
+
+- Helper pipe name: `<powered_loader_name>-pipe`
+- Helper pipe position: `{x = loader.x, y = loader.y + 1/32}`
+
+If a future AAI release changes naming/placement/ownership internals, PBE compatibility is best-effort and will fail soft (normal belt power behavior continues, and warnings are logged).
+
+#### Tested Versions
+
+- Powered Belts Extended: current `1.3.1`
+- AAI Loaders: `0.2.10`
+
+### Community Tested Mods
+
+Below are mods that have been used by Powered Belts Extended testers/users and some of them had compatibility issues resolved previously. While they might work with this mod - they are not thoroughly tested, nor full compatibility is guaranteed. These mods include:
+- AAI Loaders - described in detail in previous section
+- Black Rubber Belts - Remastered - resolved issue with icons
+- Loader Utils - resolved issue with mod loading order
+- Deadlock's Stacking Beltboxes & Compact Loaders - was used alongside Loader Utils
+
 ## Known Limitations
 
 - Tooltip power values on item/entity hover are static summaries, not live values at current efficiency tech level. Power sources in the electric network statistics will show current power consumption values in tooltips when hovered.
