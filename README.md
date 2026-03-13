@@ -115,19 +115,14 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
 
 When `aai-loaders` is active, Powered Belts Extended applies targeted compatibility logic for AAI loader entities only (`aai-*` / `unpowered-aai-*`).
 
-- Power-up replacement (`unpowered-aai-*` -> `aai-*`) is created with `raise_built=true`.
-- Power-down replacement (`aai-*` -> `unpowered-aai-*`) proactively removes the AAI helper pipe before swap. Unpowered loaders are purposefully not tracked by AAI loaders mod.
+- Power-up replacement (`unpowered-aai-*` -> `aai-*`) is created with `raise_built=true` so that AAI Loaders track internally the replaced loader.
+- Power-down replacement (`aai-*` -> `unpowered-aai-*`) proactively removes the AAI helper pipe before swap. Unpowered loaders are purposefully not tracked by AAI loaders mod not to consume lubricant while inactive.
+- Keeps track of extra fluid that would be lost due to helper pipe being removed (occurs if pipeline capacity reached after removal) and later attempts to restore it.
 - Compatibility logic is scoped; non-AAI entities keep the normal replacement flow and without raising events.
 
 #### Why This Is Needed
 
 AAI Loaders tracks lubricated loaders internally and manages helper pipe entities. Without targeted handling, fast-replace power toggles leaves invalid AAI loader entry that is not initialized properly without built event being raised (and as such - doesn't consume lubricant) and also later cleans up the pipe of a new loader (i.e. powered-up loader) that according to AAI internals - might "inherit" the stale pipe after invalid entity instead of creating a fresh one.
-
-PBE avoids that by:
-
-- Capturing helper pipe fluid state before power-down replacement.
-- Destroying the old helper pipe before swapping the loader (on power down).
-- Restoring captured fluid into the newly created pipe after power-up.
 
 #### Compatibility Effects
 
