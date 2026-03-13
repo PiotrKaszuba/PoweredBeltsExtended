@@ -154,10 +154,13 @@ If a future AAI release changes naming/placement/ownership internals, PBE compat
 ### Community Tested Mods
 
 Below are mods that have been used by Powered Belts Extended testers/users and some of them had compatibility issues resolved previously. While they might work with this mod - they are not thoroughly tested, nor full compatibility is guaranteed. These mods include:
+
 - AAI Loaders - described in detail in previous section
 - Black Rubber Belts - Remastered - resolved issue with icons
 - Loader Utils - resolved issue with mod loading order
 - Deadlock's Stacking Beltboxes & Compact Loaders - was used alongside Loader Utils
+
+---
 
 ## Known Limitations
 
