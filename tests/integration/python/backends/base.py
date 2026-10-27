@@ -30,6 +30,7 @@ class RunConfig:
     scenario_filter: str | None = None
     mod_zip: Path | None = None
     restart_at_tick: int | None = None
+    upgrade_save: Path | None = None
 
 
 @dataclass(frozen=True)

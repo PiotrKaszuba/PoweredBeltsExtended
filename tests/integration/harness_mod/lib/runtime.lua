@@ -917,9 +917,13 @@ function M.on_init()
     queue_scenarios(get_filtered_suite(startup_filter))
 end
 
-function M.on_configuration_changed(_event)
+function M.on_configuration_changed(event)
 	ensure_harness_storage()
 	apply_test_game_speed()
+    helpers.write_file("pbe-upgrade-event.json", helpers.table_to_json({
+        tick = game.tick, old_version = event.old_version, new_version = event.new_version,
+        mod_changes = event.mod_changes,
+    }), false)
 end
 
 function M.on_tick(_event)

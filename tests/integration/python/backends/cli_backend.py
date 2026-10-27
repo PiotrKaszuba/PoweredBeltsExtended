@@ -39,7 +39,13 @@ def _run_headless_suite(config: RunConfig, runtime: RuntimePaths) -> None:
 def run(config: RunConfig) -> BackendRunResult:
     runtime = stage_runtime(config)
     try:
-        _create_world(config, runtime)
+        if config.upgrade_save is not None:
+            if config.restart_at_tick is not None:
+                raise ValueError("Use a saved upgrade checkpoint or a new restart trial, not both")
+            import shutil
+            shutil.copy2(config.upgrade_save, runtime.save_path)
+        else:
+            _create_world(config, runtime)
         if config.restart_at_tick is not None:
             if not 0 < config.restart_at_tick < config.until_tick:
                 raise ValueError("Restart tick must lie inside the trial")

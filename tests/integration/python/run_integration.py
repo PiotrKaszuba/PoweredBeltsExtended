@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mod-zip", type=Path, help="Stage the exact candidate ZIP unchanged instead of source.")
     parser.add_argument("--scenario-filter", help="Scenario ID substring, or suite:acceptance for packaged behavior.")
     parser.add_argument("--restart-at-tick", type=int, help="Save and restart an active scenario at this game tick (CLI backend).")
+    parser.add_argument("--upgrade-save", type=Path, help="Resume a native harness checkpoint made by an earlier game/mod version (CLI only).")
     parser.add_argument("--factorio-bin", type=Path, default=None, help="Path to factorio executable.")
     parser.add_argument("--artifacts-dir", type=Path, default=None, help="Artifacts output directory.")
     parser.add_argument("--until-tick", type=int, default=int(os.environ.get("PBE_TEST_UNTIL_TICK", "50000")))
@@ -204,6 +205,12 @@ def run_suite(config: RunConfig, backend_name: str) -> dict[str, Any]:
             "restart_at_tick": config.restart_at_tick,
             "timing_operations_default": 128 if config.mod_zip and config.pbe_energy_preset_override else None,
         }
+        if config.upgrade_save is not None:
+            change = json.loads((run_result.runtime_root / "user-data/script-output/pbe-upgrade-event.json").read_text(encoding="utf-8"))
+            if "PoweredBeltsExtended" not in change.get("mod_changes", {}):
+                raise RuntimeError("Upgrade trial did not observe a PBE version change")
+            parsed["verification"]["upgrade"] = change
+            parsed["verification"]["upgrade_save_sha256"] = hashlib.sha256(config.upgrade_save.read_bytes()).hexdigest()
         return parsed
     finally:
         if config.remove_runtime_dir_on_exit:
@@ -420,6 +427,11 @@ def main() -> int:
         build_order_random_seeds = _parse_build_order_random_seeds(args.build_order_random_seeds)
         extra_mod_paths = _parse_extra_mod_paths(args.extra_mod_path)
         aai_mode_override = None if args.aai_mode == "default" else args.aai_mode
+        if args.upgrade_save is not None:
+            if args.backend != "cli" or args.mod_state != "enabled" or build_order_modes != ["normal"] or run_timing_suite:
+                raise ValueError("Upgrade checkpoint: use CLI, --mod-state enabled, --build-order-modes normal and --run-timing-suite false")
+            if not args.upgrade_save.is_file():
+                raise ValueError("Upgrade checkpoint does not exist")
         timing_presets = _parse_timing_presets(args.timing_presets) if run_timing_suite else []
         timing_build_order_modes = _parse_timing_build_order_modes(args.timing_build_order_modes) if run_timing_suite else []
     except ValueError as exc:
@@ -453,6 +465,7 @@ def main() -> int:
         mod_zip=args.mod_zip,
         scenario_filter=args.scenario_filter,
         restart_at_tick=args.restart_at_tick,
+        upgrade_save=args.upgrade_save,
     )
 
     try:

@@ -69,6 +69,30 @@ The synthetic floating-belt prototype fixture verifies a valid nonstandard colli
 mask and upgrade chain through PBE cloning and engine loading. It does not establish
 full Dredgeworks compatibility or reproduce a reporter's 2.1 setup.
 
+## Factorio 2.1 port contracts and upgrades
+
+`scenarios_port.lua` adds two connected AAI segment trials (partial/full) and
+three actual Dredgeworks floating-belt tiers. They are selected by `aai_connected`
+or `floating_`, and included in `suite:acceptance` when their required mods are
+staged. Use AAI Loaders 0.3.0, Dredgeworks 1.0.0 and Dredgeworks Graphics 1.0.0.
+The floating trials keep water underneath the belts and assert both power
+transitions and completed item transfer. Connected AAI trials check fluid plus
+saved overflow, including the no-snapshot path and restored snapshots. Their
+small consumption allowance accounts for AAI's existing startup/refresh charges.
+
+To resume a native **harness checkpoint** created with an earlier game/mod:
+
+```text
+python -m tests.integration.python.run_integration --factorio-bin PATH_TO_2_1 --mod-zip PATH_TO_ZIP --upgrade-save PATH_TO_CHECKPOINT --mod-state enabled --build-order-modes normal --run-timing-suite false --until-tick 2200
+```
+
+This copies the checkpoint into an isolated profile and resumes its saved active
+scenario; it does not construct a replacement world. Match its partner mods with
+compatible 2.1 archives using `--extra-mod-path`. The report records the save hash,
+engine/mod configuration-change event and final scenario assertions. An actual PBE
+version change is required. This option is for this harness's checkpoints, not an
+arbitrary player save. The checkpoint's saved layout/build order stays authoritative.
+
 ## Focused policy and performance checks
 
 ```text
