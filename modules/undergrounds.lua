@@ -9,12 +9,12 @@ function undergrounds.underground_length(underground)
 		return nil
 	end
     if underground and underground.belt_to_ground_type == "output" then
-		underground = underground.neighbours
+		underground = underground.underground_belt_neighbour
 	end
-	if (not underground) or (not underground.neighbours) then
+	if (not underground) or (not underground.underground_belt_neighbour) then
 		return 0.0
 	end
-	return math.abs(underground.position.x - underground.neighbours.position.x + underground.position.y - underground.neighbours.position.y)
+	return math.abs(underground.position.x - underground.underground_belt_neighbour.position.x + underground.position.y - underground.underground_belt_neighbour.position.y)
 end
 
 function undergrounds.lane_max_check(underground, lane_idx, underground_len)
@@ -139,7 +139,7 @@ function undergrounds.check_and_clear_lane(lane, max_check, replace_context)
 end
 
 function undergrounds.check_and_clear_lanes(underground, underground_len, replace_context)
-	local n = underground.neighbours
+	local n = underground.underground_belt_neighbour
 	
 	local lanes_items = {}
 	local lanes_positions = {}
@@ -469,7 +469,7 @@ function undergrounds.call_replace(surface, entity_idx, entity_data)
 end
 
 function undergrounds.collect_extra_neighbour_data(entity, neighbour_entity, replace_context, extra_neighbours_data)
-	local extra_neigbour = entity.neighbours
+	local extra_neigbour = entity.underground_belt_neighbour
 	if extra_neigbour ~= nil and extra_neigbour ~= neighbour_entity and extra_neigbour.valid and extra_neigbour.type == "underground-belt" then
 		local extra_neighbour_idx = utils.get_entity_position_key(extra_neigbour)
 		local extra_underground_len = undergrounds.underground_length(extra_neigbour)
@@ -508,7 +508,7 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 	local lanes_items = nil
 	local lanes_positions = nil
 	if is_underground then
-		neighbour_entity = entity.neighbours
+		neighbour_entity = entity.underground_belt_neighbour
 		entity_data.belt_to_ground_type = entity.belt_to_ground_type
 		if not replace_context.disable_item_transfer then
 			lanes_items, lanes_positions = undergrounds.check_and_clear_lanes(entity, underground_len, replace_context)
@@ -564,7 +564,7 @@ function undergrounds.replace_entity(entity, surface, entity_idx, check_for_neig
 		if (not replace_context.disable_item_transfer) and neighbour_cond then
 			if (neighbour_entity == nil or not neighbour_entity.valid) and entities_by_surface ~= nil then
 				if (neighbour_entity == nil or not neighbour_entity.valid) and entities_by_surface ~= nil then
-					neighbour_entity = new_entity.neighbours
+					neighbour_entity = new_entity.underground_belt_neighbour
 					if neighbour_entity == nil or not neighbour_entity.valid then
 						neighbour_entity = entities_by_surface[neighbour_idx]
 						if neighbour_entity == nil or not neighbour_entity.valid then
