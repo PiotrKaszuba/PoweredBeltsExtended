@@ -99,3 +99,25 @@ underground endpoints and optional Dolly integration remain outside this change.
 
 Detailed generated reports stay ignored under `tests/artifacts/review-2.0-*`.
 Only this bounded summary is tracked; complete per-run logs are not repository docs.
+
+## Final 1.3.2 artifact acceptance
+
+27 October 2026. The correctly versioned ZIP has **20 files / 402012 bytes**,
+SHA-256 `56081186e449e356bfc1e877856c1820f13ee95989892e00281f4fd21d604b10`.
+Only `info.json` (1.3.2) and the changelog date differ from the earlier accepted
+candidate; production Lua and all other packaged files are byte-identical.
+ZIP CRCs, one mod-root directory, portable paths and source bytes pass inspection.
+
+Fresh Factorio 2.0.77 runs of these exact bytes pass:
+
+- Production base acceptance: eight scenarios / 36 assertions, normal build order.
+- AAI Loaders 0.2.11 lubricated lifecycle: three scenarios / 23 assertions.
+- Actual 1.3.1 → 1.3.2 configuration change during an outage: one scenario / seven
+  assertions. A native checkpoint was created with production source `45babf3`
+  reconstructed as a 1.3.1 ZIP (not a downloaded portal archive). After swapping to
+  the final 1.3.2 ZIP, the engine reported old/new versions 1.3.1/1.3.2 at tick 401;
+  the original scenario resumed through tick 1800 with planner/item checks intact.
+
+The previous reversed-order, preset, expensive-AAI and paired CPU evidence remains
+applicable to identical production code. New raw runs and the isolated upgrade
+script/checkpoint are ignored under `tests/artifacts/release-1.3.2-*`.
