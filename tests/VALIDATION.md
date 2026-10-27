@@ -1,3 +1,84 @@
+# Factorio 2.1 validation
+
+27 October 2026. Candidate **1.4.0**, based on 2.0 baseline `e40f932`.
+Actual engine: **2.1.23 Windows Steam**, isolated base-game profiles; expansion
+modules disabled. Historical 2.0 evidence follows unchanged below.
+
+## Production scope
+
+Only two runtime files differ from the accepted 2.0 baseline:
+
+- `undergrounds.lua`: `neighbours` → `underground_belt_neighbour` at all eight reads.
+- `compatibility.lua`: AAI snapshots read segment fluid/capacity explicitly and
+  use `get_fluid_capacity(1)` for the removed pipe's own volume. The saved amount
+  remains `max(0, segment_amount - (segment_capacity - pipe_capacity))`.
+
+Power formulas, thresholds/cache, settings, prototypes, locale, item preservation,
+planner handling, scanning and persistent state layout are unchanged. No gameplay
+redesign or new migration is involved. AAI 0.3.0 retains 0.2.11's rate/settings and
+startup/refresh charges; its own code also ports active writes and fluid APIs.
+Individual-storage fluid reads differ from segment reads in 2.1, which is why a
+simple method-name substitution would be insufficient for PBE snapshots.
+
+## Final archive acceptance
+
+`PoweredBeltsExtended_1.4.0.zip`: **20 files / 402102 bytes**; SHA-256
+`adbddac1c92426a9c43a5e126bba08cf0091a142bba6f87e8fcdb23f4b02f5d5`.
+CRC, single mod root, portable ZIP paths and every packaged source byte match.
+No test module is packaged. The original accepted 1.3.2 archive remains unchanged.
+
+| Exact-archive profile | Orders / runs | Scenarios / assertions per run |
+| --- | --- | --- |
+| Production base acceptance | Normal, reversed | 8 / 36, all pass |
+| Four isolated presets | Normal, reversed for each | 1 / 3 each; Custom 1 / 6, all pass |
+| Combined partner set, AAI lubricated | Normal, reversed | 16 / 76, all pass |
+| AAI expensive mode | Normal, reversed | 9 / 42, all pass |
+| Save/restart during planner outage | Two server processes | 1 / 7, pass |
+| Real 2.0.77/1.3.2 → 2.1.23/1.4.0 planner checkpoint | Saved at 400, version change at 401 | 1 / 7, pass through 1800 |
+| Same upgrade with AAI 0.2.11 → 0.3.0 during outage | Saved at 350, version change at 351 | 1 / 12, pass through 1000 |
+
+The combined partner set uses AAI Loaders **0.3.0**, Loader Utilities **1.2.2**,
+Perel **1.2.2**, Black Rubber Belts Remastered **2.4.6**, Dredgeworks **1.0.0** and
+Dredgeworks Graphics **1.0.0**. Archive SHA identities are in generated reports.
+All ordinary archive trials use the production 16 operations/tick. Timing profiles
+explicitly use 128. The final matrix totals **77 scenario executions / 364
+assertions**. The earlier complete source suite also passes normal/reversed and
+its disabled-mod negative controls, plus all eight preset/order profiles.
+
+Connected AAI trials check partial/full segments: fluid retained by a surviving
+pipe plus any PBE snapshot stays within the expected AAI consumption allowance,
+without duplication; overflow is restored and its snapshot cleared. Both snapshot
+and no-snapshot paths pass. The real AAI upgrade checkpoint carries pending fluid
+state through the game/mod update. It is not a synthetic reconstruction after load.
+
+Actual Dredgeworks floating belts are exercised on water at all three base tiers,
+with observed off/on transitions and complete transfer. Issue #11's reported
+collision-mask loading failure **does not reproduce with this partner set**; no
+speculative production patch was added. The reporter's complete original mod list
+is unknown, so this does not establish the cause or certify arbitrary combinations.
+
+Default/Synchronized/Responsive transitions match the recorded 2.0 fixture ticks
+exactly, in both orders. Custom still verifies the 48%/72% deadband. These remain
+bounded observations, not universal synchronization or unchanged engine-flow claims.
+
+## Performance and limits
+
+No additional polling, scans, per-tick storage or algorithmic work was introduced.
+The threshold implementation is byte-identical to 1.3.2. Five fresh Lua 5.2.4
+workload samples (1000 ticks) give median CPU totals **0.006 s** at 16 checks/tick
+(range 0.002–0.012), **0.289 s** at 1024 (0.264–0.302). These are consistent with
+the earlier accepted measurements; they do not measure total native-mod UPS or
+establish cross-engine performance equivalence. Lua syntax passes for 32 files;
+Python compilation and the policy/cache regression pass.
+
+Commands and upgrade-checkpoint semantics: [README.md](README.md). Raw accepted
+runs stay ignored under `tests/artifacts/release-1.4.0-*`; preparatory native
+checkpoints/source trials under `port-2.1-*`. AAI/Dredgeworks fixtures are retained
+as ordinary acceptance scenarios. RCON, actual player/robot cursor routes and
+Space Age implementation are not newly certified by this port.
+
+---
+
 # Factorio 2.0 validation
 
 27 October 2026. Actual engine: **2.0.77 Linux headless**, base game only.

@@ -1,5 +1,7 @@
 # Powered Belts Extended
 
+Use **1.4.0** for Factorio **2.1**, or **1.3.2** for Factorio **2.0**.
+
 **Belts now need power in Factorio 2.0+**
 
 `Powered Belts Extended` makes every belt network entity consume electricity, including modded entities. Transport belts, underground belts, splitters, and loaders are monitored and automatically switch off during power shortages.
@@ -216,8 +218,8 @@ If a future AAI Loaders release changes naming/placement/ownership internals, PB
 
 #### Tested Versions
 
-- Powered Belts Extended: current `1.3.2`
-- AAI Loaders: `0.2.10`
+- Powered Belts Extended: `1.4.0` (Factorio 2.1.23)
+- AAI Loaders: `0.3.0`
 
 ### Community Tested Mods
 
@@ -270,4 +272,4 @@ Repository-only notes below this boundary are not part of the portal description
 - [Engine scenarios and commands](tests/README.md)
 - [Run modes and debugging](tests/integration/RUN_MODES.md)
 - `scripts/package-mod.ps1` or `scripts/package-mod.sh` builds a release archive.
-- Use an actual Factorio 2.0 engine for 2.0 acceptance. Tests run in isolated profiles.
+- Use an actual Factorio 2.1 engine for this branch. The `factorio-2.0` branch retains 1.3.2. Tests run in isolated profiles.
