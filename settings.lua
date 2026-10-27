@@ -25,12 +25,66 @@ data:extend({
         order = "a"
     },
     {
+        type = "string-setting",
+        name = "powered-belts-energy-behavior-preset",
+        setting_type = "startup",
+        default_value = "default",
+        allow_blank = false,
+        allowed_values = {"default", "synchronized", "responsive", "custom"},
+        order = "a"
+    },
+    {
+        type = "double-setting",
+        name = "powered-belts-input-flow-limit-multiplier",
+        setting_type = "startup",
+        default_value = 1.0,
+        minimum_value = 1.0,
+        maximum_value = 10.0,
+        order = "a"
+    },
+    {
+        type = "int-setting",
+        name = "powered-belts-input-flow-limit-flat",
+        setting_type = "startup",
+        default_value = 10,
+        minimum_value = 0,
+        maximum_value = 100,
+        order = "a"
+    },
+    {
+        type = "double-setting",
+        name = "powered-belts-buffer-capacity-multiplier",
+        setting_type = "startup",
+        default_value = 1.0,
+        minimum_value = 0.01,
+        maximum_value = 10.0,
+        order = "a"
+    },
+    {
         type = "int-setting",
         name = "powered-belts-required-energy-percentage",
         setting_type = "runtime-global",
         default_value = 50,
         minimum_value = 0,
         maximum_value = 100,
+        order = "a"
+    },
+    {
+        type = "int-setting",
+        name = "powered-belts-required-energy-percentage-flat",
+        setting_type = "runtime-global",
+        default_value = 0,
+        minimum_value = 0,
+        maximum_value = 100,
+        order = "a"
+    },
+    {
+        type = "int-setting",
+        name = "powered-belts-required-energy-hysteresis-percentage",
+        setting_type = "runtime-global",
+        default_value = 0,
+        minimum_value = 0,
+        maximum_value = 33,
         order = "a"
     },
     {

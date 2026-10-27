@@ -73,6 +73,12 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("PBE_DEBUG_AAI_MODE", "default"),
         help="Optional AAI Loaders startup mode override for staged debug runs.",
     )
+    parser.add_argument(
+        "--pbe-energy-preset",
+        choices=("default", "synchronized", "responsive", "custom", "none"),
+        default=os.environ.get("PBE_DEBUG_PBE_ENERGY_PRESET", "none"),
+        help="Optional Powered Belts energy preset startup override for staged debug runs.",
+    )
     return parser.parse_args()
 
 
@@ -213,6 +219,7 @@ def main() -> int:
         remove_runtime_dir_on_exit = _parse_bool_option("--remove-runtime-dir-on-exit", args.remove_runtime_dir_on_exit)
         extra_mod_paths = _parse_extra_mod_paths(args.extra_mod_path)
         aai_mode_override = None if args.aai_mode == "default" else args.aai_mode
+        pbe_energy_preset_override = None if args.pbe_energy_preset == "none" else args.pbe_energy_preset
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -245,6 +252,7 @@ def main() -> int:
         build_order_seed=args.build_order_seed,
         extra_mod_paths=extra_mod_paths,
         aai_mode_override=aai_mode_override,
+        pbe_energy_preset_override=pbe_energy_preset_override,
     )
 
     runtime: RuntimePaths | None = None
@@ -295,6 +303,7 @@ def main() -> int:
     print(f"build_order_mode: {args.build_order_mode}")
     print(f"build_order_seed: {args.build_order_seed}")
     print(f"aai_mode: {args.aai_mode}")
+    print(f"pbe_energy_preset: {args.pbe_energy_preset}")
     print(f"extra_mod_paths: {args.extra_mod_path if args.extra_mod_path else []}")
     print(f"Console log: {console_log_path}")
     print("Press Ctrl+C to stop the server.")

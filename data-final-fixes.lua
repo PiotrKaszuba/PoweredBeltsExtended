@@ -1,4 +1,5 @@
-require("prototypes.technology")
+﻿require("prototypes.technology")
+local power_behavior = require("modules.power_behavior")
 
 -- 2.0: resistances_immune for entities that should take no damage (base mod may not expose this in data-final-fixes)
 local resistances_immune = {
@@ -18,6 +19,7 @@ local num_levels = settings.startup["powered-belts-num-upgrades"].value
 local reduction = settings.startup["powered-belts-upgrade-reduction"].value
 local usage_name = tostring(settings.startup["powered-belts-usage-multiplier"].value):gsub("%.", "_")
 local upgrade_name = tostring(settings.startup["powered-belts-upgrade-reduction"].value):gsub("%.", "_")
+local startup_behavior = power_behavior.resolve_startup_settings(settings.startup)
 local tech_factor = 1 - reduction
 local yellow_belt_speed = 0.03125
 local belt_speed_normalizer = 32
@@ -42,7 +44,24 @@ local function underground_belt_mult(v)
 	return (v.max_distance + 3) / 2
 end
 
+local function format_energy_value(value)
+	if value == nil then
+		return "0"
+	end
+	if value == math.huge then
+		return "0"
+	end
+	local out = string.format("%.6f", value)
+	out = out:gsub("0+$", "")
+	out = out:gsub("%.$", "")
+	if out == "" then
+		return "0"
+	end
+	return out
+end
+
 local function create_power_entity_def(v, i, ei, usage_name, upgrade_name)
+	local input_flow_limit_kw, buffer_capacity_kj = power_behavior.compute_power_source_values(ei, startup_behavior)
 	return {
 		type = "electric-energy-interface",
 		name = v.name .. "-" .. usage_name .. "-" .. upgrade_name .. "-" .. i .. "-power",
@@ -62,11 +81,11 @@ local function create_power_entity_def(v, i, ei, usage_name, upgrade_name)
 		energy_source = {
 			type = "electric",
 			usage_priority = "secondary-input",
-			input_flow_limit = (ei + 1) .. "kW",
-			buffer_capacity = (1 * ei) .. "kJ"
+			input_flow_limit = format_energy_value(input_flow_limit_kw) .. "kW",
+			buffer_capacity = format_energy_value(buffer_capacity_kj) .. "kJ"
 		},
 		energy_production = "0W",
-		energy_usage = ei .. "kW",
+		energy_usage = format_energy_value(ei) .. "kW",
 		hidden = true,
 		hidden_in_factoriopedia = true,
 	}
@@ -121,10 +140,9 @@ local function process_belt_type(raw_key, mult)
 			else
 				x.placeable_by = v.placeable_by
 			end
-			
+
 			x.localised_name = x.localised_name or {"entity-name." .. v.name}
 			x.localised_description = x.localised_description or {"entity-description." .. v.name}
-			
 
 			data:extend({x})
 			for i = 0, num_levels + 1 do

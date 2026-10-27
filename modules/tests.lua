@@ -15,6 +15,12 @@ function tests.set_test_overrides(overrides)
 	if type(overrides.required_energy_percentage) == "number" then
 		sanitized.required_energy_percentage = utils.normalize_required_energy_percentage(overrides.required_energy_percentage)
 	end
+	if type(overrides.required_energy_percentage_flat) == "number" then
+		sanitized.required_energy_percentage_flat = utils.normalize_required_energy_percentage_flat(overrides.required_energy_percentage_flat)
+	end
+	if type(overrides.required_energy_hysteresis_percentage) == "number" then
+		sanitized.required_energy_hysteresis_percentage = utils.normalize_required_energy_hysteresis_percentage(overrides.required_energy_hysteresis_percentage)
+	end
 	if type(overrides.operations_per_tick) == "number" then
 		sanitized.operations_per_tick = math.max(1, math.floor(overrides.operations_per_tick))
 	end
@@ -37,6 +43,9 @@ function tests.register_test_api()
 			normalize_underground_transfer_mode = utils.normalize_underground_transfer_mode,
 			preserve_mode_enabled = utils.preserve_mode_enabled,
 			underground_item_transfer_disabled = utils.underground_item_transfer_disabled,
+			normalize_required_energy_percentage = utils.normalize_required_energy_percentage,
+			normalize_required_energy_percentage_flat = utils.normalize_required_energy_percentage_flat,
+			normalize_required_energy_hysteresis_percentage = utils.normalize_required_energy_hysteresis_percentage,
 		}
 	end
 end

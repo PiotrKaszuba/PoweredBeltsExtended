@@ -230,6 +230,155 @@ local function normalize_non_negative_tick(value, field_name)
 	return tick, nil
 end
 
+local function reference_is_powered(active, reference_name)
+	local entity = world.get_referenced_entity(active, reference_name)
+	if not (entity and entity.valid and type(entity.name) == "string") then
+		return nil
+	end
+	return string.find(entity.name, "unpowered-", 1, true) ~= 1
+end
+
+local function metric_label(report, reference_name)
+	if report ~= nil and type(report.labels) == "table" then
+		local label = report.labels[reference_name]
+		if type(label) == "string" and label ~= "" then
+			return label
+		end
+	end
+	return reference_name
+end
+
+local function build_phase_metrics(report, ticks)
+	local refs = report.refs or {}
+	local ordered_ticks = {}
+	local min_tick = nil
+	local max_tick = nil
+	local all_refs_detected = true
+
+	for _, ref in ipairs(refs) do
+		local tick = ticks[ref]
+		ordered_ticks[ref] = tick
+		if type(tick) ~= "number" then
+			all_refs_detected = false
+		else
+			if min_tick == nil or tick < min_tick then
+				min_tick = tick
+			end
+			if max_tick == nil or tick > max_tick then
+				max_tick = tick
+			end
+		end
+	end
+
+	local spread = nil
+	if min_tick ~= nil and max_tick ~= nil then
+		spread = max_tick - min_tick
+	end
+
+	local deltas = {}
+	for idx = 1, #refs - 1 do
+		local from_ref = refs[idx]
+		local to_ref = refs[idx + 1]
+		local from_tick = ordered_ticks[from_ref]
+		local to_tick = ordered_ticks[to_ref]
+		local key = metric_label(report, from_ref) .. "_to_" .. metric_label(report, to_ref)
+		if type(from_tick) == "number" and type(to_tick) == "number" then
+			deltas[key] = to_tick - from_tick
+		else
+			deltas[key] = nil
+		end
+	end
+	if #refs >= 3 then
+		local first_ref = refs[1]
+		local last_ref = refs[#refs]
+		local first_tick = ordered_ticks[first_ref]
+		local last_tick = ordered_ticks[last_ref]
+		local key = metric_label(report, first_ref) .. "_to_" .. metric_label(report, last_ref)
+		if type(first_tick) == "number" and type(last_tick) == "number" then
+			deltas[key] = last_tick - first_tick
+		else
+			deltas[key] = nil
+		end
+	end
+
+	return {
+		ordered_ticks = ordered_ticks,
+		all_refs_detected = all_refs_detected,
+		min_tick = min_tick,
+		max_tick = max_tick,
+		spread = spread,
+		deltas = deltas,
+	}
+end
+
+local function initialize_timing_probe_report(active)
+	local config = active and active.scenario and active.scenario.timing_probe
+	if type(config) ~= "table" then
+		return nil
+	end
+	local refs = {}
+	for _, ref in ipairs(config.refs or {}) do
+		if type(ref) == "string" and ref ~= "" then
+			refs[#refs + 1] = ref
+		end
+	end
+	if #refs == 0 then
+		return nil
+	end
+	local off_tick = math.max(0, math.floor(config.off_tick or 0))
+	local on_tick = math.max(0, math.floor(config.on_tick or (off_tick + 1)))
+	local labels = {}
+	if type(config.labels) == "table" then
+		for ref, label in pairs(config.labels) do
+			if type(ref) == "string" and type(label) == "string" and label ~= "" then
+				labels[ref] = label
+			end
+		end
+	end
+	return {
+		refs = refs,
+		labels = labels,
+		off_tick = off_tick,
+		on_tick = on_tick,
+		down_ticks = {},
+		up_ticks = {},
+		last_state = {},
+		phases = {},
+	}
+end
+
+local function update_timing_probe_report(active, elapsed)
+	local report = active and active.timing_probe_report
+	if report == nil then
+		return
+	end
+	for _, reference_name in ipairs(report.refs) do
+		local powered = reference_is_powered(active, reference_name)
+		if powered ~= nil then
+			local last = report.last_state[reference_name]
+			if last == nil then
+				report.last_state[reference_name] = powered
+			elseif last ~= powered then
+				if (not powered) and elapsed >= report.off_tick and report.down_ticks[reference_name] == nil then
+					report.down_ticks[reference_name] = elapsed
+				elseif powered and elapsed >= report.on_tick and report.up_ticks[reference_name] == nil then
+					report.up_ticks[reference_name] = elapsed
+				end
+				report.last_state[reference_name] = powered
+			end
+		end
+	end
+end
+
+local function finalize_timing_probe_report(active)
+	local report = active and active.timing_probe_report
+	if report == nil then
+		return
+	end
+	report.phases.down = build_phase_metrics(report, report.down_ticks)
+	report.phases.up = build_phase_metrics(report, report.up_ticks)
+end
+
 local function ensure_harness_storage()
 	if storage.harness == nil then
 		storage.harness = {}
@@ -484,6 +633,7 @@ local function summarize_scenario(active)
 			failed_count = failed_count + 1
 		end
 	end
+	finalize_timing_probe_report(active)
 	local expected_failed_assertions = get_expected_failed_assertions(active.scenario, active.main_mod_available)
 
 	return {
@@ -498,6 +648,7 @@ local function summarize_scenario(active)
 		passed = failed_count == expected_failed_assertions,
 		assertions = active.assertion_results,
 		update_loop_probe_report = deep_copy(active.update_loop_probe_report),
+		timing_probe_report = deep_copy(active.timing_probe_report),
 	}
 end
 
@@ -590,6 +741,7 @@ local function start_scenario(scenario, setup_options)
 			abs_ticks = probe_ticks_absolute,
 			iterations = {},
 		} or nil,
+		timing_probe_report = nil,
 	}
 	active.scenario.actions = append_actions(active.scenario.actions or {}, setup_options and setup_options.extra_actions or nil)
 	if setup_options ~= nil and setup_options.pause_at_tick ~= nil then
@@ -615,6 +767,11 @@ local function start_scenario(scenario, setup_options)
 			active.expected_contents = action.stacks or {}
 			break
 		end
+	end
+
+	active.timing_probe_report = initialize_timing_probe_report(active)
+	if active.timing_probe_report ~= nil then
+		update_timing_probe_report(active, 0)
 	end
 
 	harness.active = active
@@ -648,6 +805,8 @@ local function run_active_scenario_tick()
 		active.next_action_idx = active.next_action_idx + 1
 	end
 
+	update_timing_probe_report(active, elapsed)
+
 	while active.next_checkpoint_idx <= #active.scenario.checkpoints do
 		local checkpoint = active.scenario.checkpoints[active.next_checkpoint_idx]
 		if (checkpoint.tick or 0) > elapsed then break end
@@ -674,45 +833,74 @@ local function queue_scenarios(scenario_list)
 end
 
 local function get_default_suite()
-	return filter_scenarios_for_runtime(scenarios.get_all())
+    return filter_scenarios_for_runtime(scenarios.get_all())
+end
+
+local function get_timing_suite()
+    if type(scenarios.get_timing) ~= "function" then
+        return {}
+    end
+    return filter_scenarios_for_runtime(scenarios.get_timing())
+end
+
+local function get_suite_filter_from_build_order_config()
+    if type(loaded_build_order_config) ~= "table" then
+        return nil
+    end
+    local filter = loaded_build_order_config.scenario_filter
+    if type(filter) == "string" and filter ~= "" then
+        return filter
+    end
+    return nil
 end
 
 local function get_filtered_suite(filter)
-	if filter == nil then
-		return get_default_suite()
-	end
-	if type(filter) == "string" then
-		local matched = {}
-		for _, scenario in pairs(get_default_suite()) do
-			if string.find(scenario.id, filter, 1, true) then
-				matched[#matched + 1] = scenario
-			end
-		end
-		return matched
-	end
-	if type(filter) == "table" then
-		local matched = {}
-		for _, id in pairs(filter) do
-			local scenario = scenarios.find_by_id(id)
-			if scenario ~= nil and scenario_matches_runtime_mod_filters(scenario) then
-				matched[#matched + 1] = scenario
-			end
-		end
-		return matched
-	end
-	return {}
+    if filter == nil then
+        return get_default_suite()
+    end
+    if type(filter) == "string" then
+        if filter == "suite:default" then
+            return get_default_suite()
+        end
+        if filter == "suite:timing" then
+            return get_timing_suite()
+        end
+        local matched = {}
+        local seen_ids = {}
+        for _, suite in pairs({get_default_suite(), get_timing_suite()}) do
+            for _, scenario in pairs(suite) do
+                if string.find(scenario.id, filter, 1, true) and not seen_ids[scenario.id] then
+                    seen_ids[scenario.id] = true
+                    matched[#matched + 1] = scenario
+                end
+            end
+        end
+        return matched
+    end
+    if type(filter) == "table" then
+        local matched = {}
+        for _, id in pairs(filter) do
+            local scenario = scenarios.find_by_id(id)
+            if scenario ~= nil and scenario_matches_runtime_mod_filters(scenario) then
+                matched[#matched + 1] = scenario
+            end
+        end
+        return matched
+    end
+    return {}
 end
 
 function M.on_init()
-	ensure_harness_storage()
-	apply_test_game_speed()
-	log(string.format(
-		"[PBE-HARNESS] init tick=%d speed=%.3f paused=%s",
-		game.tick,
-		game.speed or 0,
-		tostring(game.tick_paused)
-	))
-	queue_scenarios(get_default_suite())
+    ensure_harness_storage()
+    apply_test_game_speed()
+    log(string.format(
+        "[PBE-HARNESS] init tick=%d speed=%.3f paused=%s",
+        game.tick,
+        game.speed or 0,
+        tostring(game.tick_paused)
+    ))
+    local startup_filter = get_suite_filter_from_build_order_config()
+    queue_scenarios(get_filtered_suite(startup_filter))
 end
 
 function M.on_configuration_changed(_event)

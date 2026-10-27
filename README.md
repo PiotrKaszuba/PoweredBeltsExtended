@@ -42,16 +42,20 @@ Underground belt power is calculated from the pair’s maximum segment length, p
 ---
 
 ### On/Off Behavior During Brownouts
-Belts switch between powered and unpowered variants based on stored energy in their hidden power interface.
-
-- If stored energy drops below the configured threshold, the entity powers down.
-- When stored energy rises back to the threshold, it powers up again.
-
-This is a threshold-based on/off system, not gradual speed throttling.
+Belts switch between powered and unpowered variants based on stored energy in hidden power interfaces.  
+This is threshold-based switching, not gradual speed throttling.
 
 In edge cases, this means a tiny power source can keep many belts running as long as they do not drop below the threshold.
 
-During brownouts, different entity types may switch at different times depending on buffer size, input flow limit, and threshold settings. This can stall item lines and make recovery harder, especially on fuel routes.
+During brownouts, entities can switch at different times depending on:
+
+- input flow limit,
+- buffer capacity,
+- effective threshold,
+- update-order timing.
+
+This can stall lines (especially fuel routes) and delay recovery.
+
 
 Entities marked for deconstruction are not toggled by this logic to avoid interfering with planner/ghost behavior.
 
@@ -61,56 +65,50 @@ Entities marked for deconstruction are not toggled by this logic to avoid interf
 For each powered belt entity:
 
 - `energy_usage = ei` (kW)
-- `input_flow_limit = ei * ifl_mult + ifl_flat` (kW)
-- `buffer_capacity = ei * bc_mult` (kJ)
-- `required_energy = min(buffer_capacity, buffer_capacity * threshold_pct + threshold_flat)` (kJ)
+- `input_flow_limit_kw = max(ei, ei*ifl_mult + 0.1*ifl_flat)`
+- `buffer_capacity_kj = max(0.001, ei*bc_mult)` (`>= 1J`)
 
-Approximate timing (from idealized states):
+Runtime threshold values:
 
-- Power-down time after outage:  
-  `t_off ~= (buffer_capacity - required_energy) / ei`
-- Power-up time from empty buffer:  
-  `t_on ~= required_energy / max(input_flow_limit - ei, 0)`
+- `X = clamp(threshold_pct + threshold_flat, 0, 100)`
+- `H = clamp(hysteresis_pct, 0, 33) / 100`
+- `down_pct = clamp((1-H)*X, 0, 100)`
+- `up_pct = clamp((1+H)*X, 0, 100)`
 
-Notes:
-- `input_flow_limit <= ei` can prevent recovery from empty buffer.
-- Flat terms (`ifl_flat`, `threshold_flat`) can bias behavior between low- and high-usage entities.
-- Multiplier-only tuning is usually best when you want similar behavior across entity types.
+Switching rules:
+
+- power down when `energy < down_energy`,
+- power up when `energy >= up_energy`.
+
+Boundary behavior is intentional: near `0%`/`100%`, one side of the hysteresis window shrinks (possibly to zero).
+
+Approximate timings from idealized states:
+
+- `t_off ~= (B - B*down_pct/100) / ei`
+- `t_on ~= (B*up_pct/100) / max(I - ei, 0)` where `I = input_flow_limit_kw` and `B = buffer_capacity_kj`
 
 ---
 
 ### Preset Modes
-- `default`  
-  Preserves legacy behavior. Higher-energy entities generally charge more slowly relative to their demand, so different entity types (and often higher tiers) may power up/down at different times during brownouts.
+- `default`
+  Legacy behavior: higher-usage entities typically need longer to charge, so different entities (and often tiers) can power up/down at different times.
 
-- `synchronized`  
-  Uses ratio-based tuning (typically multiplier-driven, with little or no flat offsets) so different belt entities are designed to switch at similar times.  
-  It is also tuned so idealized full-charge power-up time and full-discharge power-down time are equal.
+- `synchronized`
+  Ratio-based tuning with no flat offsets, targeted to keep different entity types closer in transition timing.
+  Also tuned so idealized full-charge startup time and full-discharge shutdown time are equal.
 
-- `responsive`  
-  Builds on `synchronized`, but with smaller buffers and stronger recharge headroom for faster reaction to power changes.  
-  Includes hysteresis (separate power-up and power-down thresholds) to reduce rapid on/off flicker in unstable grids and limit replacement churn/UPS overhead.
+- `responsive`
+  Same synchronization goal, but faster reaction to grid changes (higher charge headroom, smaller buffers).
+  Adds hysteresis to reduce rapid flicker in unstable networks and lower replacement churn/UPS overhead.
 
-- `custom`  
-  Enables manual control of detailed parameters. Default custom values match `default` behavior so switching to `custom` does not change behavior until edited.
+- `custom`
+  Enables detailed tuning. Defaults mirror `default`, so switching to `custom` does not change behavior until edited.
 
-Notes:
-- Behavior still depends on actual grid saturation and competing consumers in the same electric priority group.
-- `synchronized` is a target behavior, not a strict guarantee in every network state.
+Preset-locked values:
 
----
-
-On your startup-setting question (`secondary-input` vs `primary-input`):  
-I would not expose this as a normal setting. If you add it, make it an advanced startup option with strong warning text.
-
-Why:
-- `primary-input` can make belts win power over many other machines during shortages.
-- It can create surprising factory behavior and balance issues.
-- It increases support/debug complexity.
-
-Practical compromise:
-- Keep default `secondary-input`.
-- Optionally add hidden advanced startup enum: `secondary-input` (default), `primary-input` (experimental).
+- `default`: `ifl_mult=1.0`, `ifl_flat=10`, `bc_mult=1.0`, `threshold_pct=50`, `threshold_flat=0`, `hysteresis=0`
+- `synchronized`: `ifl_mult=2.0`, `ifl_flat=0`, `bc_mult=1.0`, `threshold_pct=50`, `threshold_flat=0`, `hysteresis=0`
+- `responsive`: `ifl_mult=5.0`, `ifl_flat=0`, `bc_mult=0.25`, `threshold_pct=50`, `threshold_flat=0`, `hysteresis=10`
 
 ---
 
@@ -142,6 +140,14 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
   Scales all belt power usage globally.
 - `powered-belts-speed-exponent` (default `1.0`, min `0.0`, max `3.0`)
   Controls nonlinear speed-to-power scaling around yellow belt speed (`0.03125`). `1.0` matches linear behavior.
+- `powered-belts-energy-behavior-preset` (default `default`)
+  Selects energy behavior profile: `default`, `synchronized`, `responsive`, or `custom`.
+- `powered-belts-input-flow-limit-multiplier` (default `1.0`, min `1.0`, max `10.0`)
+  Detailed startup tuning, active only when preset is `custom`.
+- `powered-belts-input-flow-limit-flat` (default `10`, min `0`, max `100`)
+  Detailed startup tuning, active only when preset is `custom`. Each point adds `0.1kW`.
+- `powered-belts-buffer-capacity-multiplier` (default `1.0`, min `0.01`, max `10.0`)
+  Detailed startup tuning, active only when preset is `custom`.
 - `powered-belts-efficiency-tech-cost-per-level` (default `50`, min `25`, max `200`)
   Base science cost per efficiency technology level. `25` = `0.5x`, `50` = `1x`, `200` = `4x`.
 - `powered-belts-num-upgrades` (default `5`, min `0`, max `10`)
@@ -154,7 +160,11 @@ Configurable upgrade levels are added (`efficient-belts-1` to `efficient-belts-N
 - `powered-belts-operations-per-tick` (default `16`)
   How many belt power entities are processed each tick.
 - `powered-belts-required-energy-percentage` (default `50`, min `0`, max `100`)
-  Percentage of each entity energy buffer that must be available for it to stay powered.
+  Detailed runtime tuning, active only when preset is `custom`. Base threshold percentage.
+- `powered-belts-required-energy-percentage-flat` (default `0`, min `0`, max `100`)
+  Detailed runtime tuning, active only when preset is `custom`. Flat percentage-point offset added before hysteresis.
+- `powered-belts-required-energy-hysteresis-percentage` (default `0`, min `0`, max `33`)
+  Detailed runtime tuning, active only when preset is `custom`. Defines split between power-up and power-down thresholds.
 - `powered-belts-print-underground-spillage` (default `true`)
   Prints `[PBE]` chat messages when underground fallback handling spills items.
 
@@ -206,7 +216,7 @@ If a future AAI Loaders release changes naming/placement/ownership internals, PB
 
 #### Tested Versions
 
-- Powered Belts Extended: current `1.3.1`
+- Powered Belts Extended: current `1.3.2`
 - AAI Loaders: `0.2.10`
 
 ### Community Tested Mods

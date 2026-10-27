@@ -1016,12 +1016,104 @@ local function default_scenarios()
 	}
 end
 
+local function timing_scenarios()
+	local timing_probe = {
+		refs = {"input_belt_1", "underground_input", "line_splitter"},
+		labels = {
+			input_belt_1 = "belt",
+			underground_input = "underground",
+			line_splitter = "splitter",
+		},
+		off_tick = 220,
+		on_tick = 380,
+	}
+	return {
+		{
+			id = "timing_preset_default",
+			layout_id = "underground_splitter_line",
+			max_tick = 900,
+			timing_probe = timing_probe,
+			settings_overrides = {
+				operations_per_tick = 128,
+			},
+			actions = {
+				{tick = 220, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 380, type = "set_surface_daylight", mode = "full-day"},
+			},
+			checkpoints = {
+				{tick = 160, assertions = {{type = "structural_consistency"}}},
+				{
+					tick = 900,
+					assertions = {
+						{type = "power_transition_spread_bounds", down_min_spread = 8, down_max_spread = 600, up_min_spread = 8, up_max_spread = 600},
+						{type = "structural_consistency"},
+					},
+				},
+			},
+		},
+		{
+			id = "timing_preset_synchronized",
+			layout_id = "underground_splitter_line",
+			max_tick = 900,
+			timing_probe = timing_probe,
+			settings_overrides = {
+				operations_per_tick = 128,
+			},
+			actions = {
+				{tick = 220, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 380, type = "set_surface_daylight", mode = "full-day"},
+			},
+			checkpoints = {
+				{tick = 160, assertions = {{type = "structural_consistency"}}},
+				{
+					tick = 900,
+					assertions = {
+						{type = "power_transition_spread_bounds", down_max_spread = 200, up_max_spread = 200},
+						{type = "structural_consistency"},
+					},
+				},
+			},
+		},
+		{
+			id = "timing_preset_responsive",
+			layout_id = "underground_splitter_line",
+			max_tick = 900,
+			timing_probe = timing_probe,
+			settings_overrides = {
+				operations_per_tick = 128,
+			},
+			actions = {
+				{tick = 220, type = "set_surface_daylight", mode = "midnight"},
+				{tick = 380, type = "set_surface_daylight", mode = "full-day"},
+			},
+			checkpoints = {
+				{tick = 160, assertions = {{type = "structural_consistency"}}},
+				{
+					tick = 900,
+					assertions = {
+						{type = "power_transition_spread_bounds", down_max_spread = 120, up_max_spread = 120},
+						{type = "structural_consistency"},
+					},
+				},
+			},
+		},
+	}
+end
 function scenarios.get_all()
 	return default_scenarios()
 end
 
+function scenarios.get_timing()
+	return timing_scenarios()
+end
+
 function scenarios.find_by_id(id)
 	for _, scenario in pairs(default_scenarios()) do
+		if scenario.id == id then
+			return scenario
+		end
+	end
+	for _, scenario in pairs(timing_scenarios()) do
 		if scenario.id == id then
 			return scenario
 		end

@@ -57,6 +57,12 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("PBE_DIAG_AAI_MODE", "default"),
         help="Optional AAI Loaders startup mode override for staged diagnosis runs.",
     )
+    parser.add_argument(
+        "--pbe-energy-preset",
+        choices=("default", "synchronized", "responsive", "custom", "none"),
+        default=os.environ.get("PBE_DIAG_PBE_ENERGY_PRESET", "none"),
+        help="Optional Powered Belts energy preset startup override for staged diagnosis runs.",
+    )
     return parser.parse_args()
 
 
@@ -735,6 +741,7 @@ def main() -> int:
     remove_runtime = args.remove_runtime_dir_on_exit == "true"
     extra_mod_paths = _parse_extra_mod_paths(args.extra_mod_path)
     aai_mode_override = None if args.aai_mode == "default" else args.aai_mode
+    pbe_energy_preset_override = None if args.pbe_energy_preset == "none" else args.pbe_energy_preset
 
     config = RunConfig(
         factorio_bin=factorio_bin,
@@ -748,6 +755,7 @@ def main() -> int:
         build_order_seed=args.build_order_seed,
         extra_mod_paths=extra_mod_paths,
         aai_mode_override=aai_mode_override,
+        pbe_energy_preset_override=pbe_energy_preset_override,
     )
 
     _log_step("Staging runtime directory.")

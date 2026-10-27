@@ -532,6 +532,54 @@ local function evaluate_aai_pipe_fluid(active, assertion)
 	end
 	return true, "AAI helper pipe fluid matches expected", extra
 end
+local function evaluate_power_transition_spread_bounds(active, assertion)
+	local report = active and active.timing_probe_report
+	if type(report) ~= "table" then
+		return false, "Missing timing probe report", nil
+	end
+
+	local phases = report.phases or {}
+	local checks = {
+		{name = "down", min = assertion.down_min_spread, max = assertion.down_max_spread},
+		{name = "up", min = assertion.up_min_spread, max = assertion.up_max_spread},
+	}
+	local failures = {}
+	local extra = {
+		off_tick = report.off_tick,
+		on_tick = report.on_tick,
+		refs = report.refs,
+		labels = report.labels,
+		down_ticks = report.down_ticks,
+		up_ticks = report.up_ticks,
+		phases = phases,
+	}
+
+	for _, check in ipairs(checks) do
+		local phase = phases[check.name]
+		if type(phase) ~= "table" then
+			failures[#failures + 1] = check.name .. ":missing-phase"
+		else
+			if assertion.require_all_refs ~= false and phase.all_refs_detected ~= true then
+				failures[#failures + 1] = check.name .. ":missing-reference-transitions"
+			end
+			if type(phase.spread) ~= "number" then
+				failures[#failures + 1] = check.name .. ":missing-spread"
+			else
+				if type(check.min) == "number" and phase.spread < check.min then
+					failures[#failures + 1] = check.name .. ":spread-below-min(" .. tostring(phase.spread) .. "<" .. tostring(check.min) .. ")"
+				end
+				if type(check.max) == "number" and phase.spread > check.max then
+					failures[#failures + 1] = check.name .. ":spread-above-max(" .. tostring(phase.spread) .. ">" .. tostring(check.max) .. ")"
+				end
+			end
+		end
+	end
+
+	if #failures > 0 then
+		return false, table.concat(failures, ", "), extra
+	end
+	return true, "Timing spread bounds satisfied", extra
+end
 function M.run(active, checkpoint_tick, assertion, call_main_mod)
 	if assertion.type == "structural_consistency" then
 		local snapshot = call_main_mod("get_state_snapshot", active.surface.index)
@@ -640,6 +688,11 @@ function M.run(active, checkpoint_tick, assertion, call_main_mod)
 		local passed, message, extra = evaluate_aai_pipe_fluid(active, assertion)
 		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
 	end
+	if assertion.type == "power_transition_spread_bounds" then
+		local passed, message, extra = evaluate_power_transition_spread_bounds(active, assertion)
+		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
+	end
+
 
 	return make_assertion_result(checkpoint_tick, assertion, false, "Unknown assertion type: " .. tostring(assertion.type))
 end

@@ -26,6 +26,8 @@ class RunConfig:
     build_order_seed: int | None = None
     extra_mod_paths: tuple[Path, ...] = ()
     aai_mode_override: str | None = None
+    pbe_energy_preset_override: str | None = None
+    scenario_filter: str | None = None
 
 
 @dataclass(frozen=True)
@@ -246,6 +248,34 @@ def _stage_aai_mode_override_mod(mods_dir: Path, aai_mode_override: str | None) 
 
     return mod_name
 
+
+def _stage_pbe_energy_preset_override_mod(mods_dir: Path, pbe_energy_preset_override: str | None) -> str | None:
+    if pbe_energy_preset_override not in {"default", "synchronized", "responsive", "custom"}:
+        return None
+
+    mod_name = "PBEEnergyPresetOverride"
+    mod_dir = mods_dir / f"{mod_name}_0.1.0"
+    mod_dir.mkdir(parents=True, exist_ok=False)
+
+    info = {
+        "name": mod_name,
+        "version": "0.1.0",
+        "title": "PBE Energy Preset Override",
+        "author": "PoweredBeltsExtended Tests",
+        "factorio_version": "2.0",
+        "dependencies": ["base", "? PoweredBeltsExtended"],
+    }
+    (mod_dir / "info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+
+    settings_updates = (
+        "local setting = data.raw[\"string-setting\"] and data.raw[\"string-setting\"][\"powered-belts-energy-behavior-preset\"]\n"
+        "if setting then\n"
+        f"  setting.default_value = {json.dumps(pbe_energy_preset_override)}\n"
+        "end\n"
+    )
+    (mod_dir / "settings-updates.lua").write_text(settings_updates, encoding="utf-8")
+    return mod_name
+
 def stage_runtime(config: RunConfig) -> RuntimePaths:
     repo_root = config.repo_root.resolve()
     artifacts_dir = config.artifacts_dir.resolve()
@@ -290,12 +320,16 @@ def stage_runtime(config: RunConfig) -> RuntimePaths:
         "local M = {}\n"
         f"M.default_mode = {json.dumps(build_order_mode)}\n"
         f"M.default_seed = {json.dumps(build_order_seed)}\n"
+        f"M.scenario_filter = {json.dumps(config.scenario_filter)}\n"
         "return M\n"
     )
     (harness_dest / "lib" / "build_order_config.lua").write_text(harness_build_order_config, encoding="utf-8")    staged_external_mod_names = _stage_external_mods(config.extra_mod_paths, mods_dir)
     aai_mode_override_mod = _stage_aai_mode_override_mod(mods_dir, config.aai_mode_override)
     if aai_mode_override_mod is not None:
         staged_external_mod_names.append(aai_mode_override_mod)
+    pbe_energy_preset_override_mod = _stage_pbe_energy_preset_override_mod(mods_dir, config.pbe_energy_preset_override)
+    if pbe_energy_preset_override_mod is not None:
+        staged_external_mod_names.append(pbe_energy_preset_override_mod)
 
     mod_entries: list[dict[str, object]] = []
     enabled_mod_names: set[str] = set()

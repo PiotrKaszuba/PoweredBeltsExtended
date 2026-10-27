@@ -1,6 +1,7 @@
 local utils = {}
+local power_behavior = require("modules.power_behavior")
 
-utils.current_version = 131
+utils.current_version = 132
 utils.belt_entity_types = {
 	["transport-belt"] = true,
 	["underground-belt"] = true,
@@ -275,23 +276,45 @@ function utils.underground_item_transfer_disabled(mode)
 end
 
 function utils.normalize_required_energy_percentage(value)
-	if type(value) ~= "number" then
-		return 50
-	end
-	return math.min(100, math.max(0, value))
+	return power_behavior.normalize_required_energy_percentage(value)
+end
+
+function utils.normalize_required_energy_percentage_flat(value)
+	return power_behavior.normalize_required_energy_flat(value)
+end
+
+function utils.normalize_required_energy_hysteresis_percentage(value)
+	return power_behavior.normalize_hysteresis_percentage(value)
+end
+
+function utils.get_energy_threshold_config()
+	local overrides = storage and storage.test_overrides or nil
+	return power_behavior.resolve_runtime_threshold(settings.startup, settings.global, overrides)
 end
 
 function utils.get_required_energy_percentage_setting()
-	if storage and storage.test_overrides and type(storage.test_overrides.required_energy_percentage) == "number" then
-		return utils.normalize_required_energy_percentage(storage.test_overrides.required_energy_percentage)
-	end
-	local setting = settings.global["powered-belts-required-energy-percentage"]
-	if setting ~= nil then
-		return utils.normalize_required_energy_percentage(setting.value)
-	end
-	return 50
+	return utils.get_energy_threshold_config().effective_threshold_pct
 end
 
+function utils.get_power_down_required_energy_percentage_setting()
+	return utils.get_energy_threshold_config().down_pct
+end
+
+function utils.get_power_up_required_energy_percentage_setting()
+	return utils.get_energy_threshold_config().up_pct
+end
+
+function utils.get_required_energy_percentage_flat_setting()
+	return utils.get_energy_threshold_config().required_flat
+end
+
+function utils.get_required_energy_hysteresis_percentage_setting()
+	return utils.get_energy_threshold_config().hysteresis_pct
+end
+
+function utils.get_energy_behavior_preset_setting()
+	return utils.get_energy_threshold_config().preset
+end
 function utils.get_operations_per_tick_setting()
 	if storage and storage.test_overrides and type(storage.test_overrides.operations_per_tick) == "number" then
 		return math.max(1, math.floor(storage.test_overrides.operations_per_tick))

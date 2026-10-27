@@ -160,10 +160,16 @@ function stats.get_state_snapshot(surface_index)
 		requested_surface = game.surfaces[surface_index]
 	end
 	local max_details = 128
+	local threshold_config = utils.get_energy_threshold_config()
 	local snapshot = {
 		tick = game.tick,
 		underground_item_transfer_mode = utils.get_effective_underground_transfer_mode(),
-		required_energy_percentage_setting = utils.get_required_energy_percentage_setting(),
+		required_energy_percentage_setting = threshold_config.effective_threshold_pct,
+		required_energy_percentage_flat_setting = threshold_config.required_flat,
+		required_energy_hysteresis_percentage_setting = threshold_config.hysteresis_pct,
+		power_down_required_energy_percentage_setting = threshold_config.down_pct,
+		power_up_required_energy_percentage_setting = threshold_config.up_pct,
+		energy_behavior_preset_setting = threshold_config.preset,
 		operations_per_tick_setting = utils.get_operations_per_tick_setting(),
 		surfaces = {},
 		totals = {
@@ -204,3 +210,4 @@ function stats.get_state_snapshot(surface_index)
 end
 
 return stats
+
