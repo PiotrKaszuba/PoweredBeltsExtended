@@ -1,3 +1,4 @@
+local port_trials = require("lib.port_trials")
 local world = require("lib.world")
 
 local M = {}
@@ -700,7 +701,11 @@ function M.run(active, checkpoint_tick, assertion, call_main_mod)
 		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
 	end
 
-	if assertion.type == "aai_pipe_fluid" then
+	if assertion.type == "aai_segment_balance" then
+        local passed, message, extra = port_trials.check_segment(active, assertion, world)
+        return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
+    end
+    if assertion.type == "aai_pipe_fluid" then
 		local passed, message, extra = evaluate_aai_pipe_fluid(active, assertion)
 		return make_assertion_result(checkpoint_tick, assertion, passed, message, extra)
 	end

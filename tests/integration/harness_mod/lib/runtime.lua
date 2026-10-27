@@ -546,14 +546,17 @@ end
 
 local function build_layout_for_scenario(layout, scenario)
 	local inserter_name = scenario and scenario.inserter_name
-	if inserter_name == nil or inserter_name == "" then
+	if (inserter_name == nil or inserter_name == "") and not scenario.belt_name then
 		return layout
 	end
 
 	local scenario_layout = deep_copy(layout)
 	for _, entity_def in ipairs(scenario_layout.entities or {}) do
+		if scenario.belt_name and prototypes.entity[entity_def.name].type == "transport-belt" then
+			entity_def.name = scenario.belt_name
+		end
 		if type(entity_def.id) == "string" and string.find(entity_def.id, "inserter", 1, true) ~= nil then
-			entity_def.name = inserter_name
+			entity_def.name = inserter_name or entity_def.name
 		end
 	end
 	return scenario_layout
@@ -867,7 +870,7 @@ local function get_filtered_suite(filter)
         if filter == "suite:acceptance" then
             local accepted = {}
             for _, scenario in pairs(get_default_suite()) do
-                if string.find(scenario.id, "_preserve$", 1) or string.find(scenario.id, "^planner_") or string.find(scenario.id, "^aai_") or scenario.id == "scan_recovery_smoke" then
+                if string.find(scenario.id, "_preserve$", 1) or string.find(scenario.id, "^planner_") or string.find(scenario.id, "^aai_") or string.find(scenario.id, "^floating_") or scenario.id == "scan_recovery_smoke" then
                     accepted[#accepted + 1] = scenario
                 end
             end

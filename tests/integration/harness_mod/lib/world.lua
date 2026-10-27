@@ -1,3 +1,4 @@
+local port_trials = require("lib.port_trials")
 local M = {}
 
 function M.clear_area(surface, area)
@@ -1594,7 +1595,11 @@ local function apply_find_and_remove_matching_entities_action(active, action)
 end
 
 function M.apply_action(active, action, call_main_mod)
-	if action.type == "set_power_buffers" then
+	if action.type == "seed_aai_segment" then
+        port_trials.seed_segment(active, action, M)
+    elseif action.type == "paint_belt_tiles" then
+        port_trials.paint_belt_tiles(active, action, M)
+    elseif action.type == "set_power_buffers" then
         for _, ref in ipairs(action.target_refs) do
             local belt = M.get_referenced_entity(active, ref)
             assert(belt and belt.valid, "Missing power-buffer target: " .. ref)

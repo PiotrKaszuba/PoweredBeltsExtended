@@ -1,3 +1,4 @@
+local port_scenarios = require("scenarios_port")
 local scenarios = {}
 
 local function make_transfer_scenario(base)
@@ -1120,7 +1121,11 @@ local function timing_scenarios()
 	}
 end
 function scenarios.get_all()
-	return default_scenarios()
+	local result = default_scenarios()
+	for _, scenario in ipairs(port_scenarios.get_all()) do
+		result[#result + 1] = scenario
+	end
+	return result
 end
 
 function scenarios.get_timing()
@@ -1128,7 +1133,7 @@ function scenarios.get_timing()
 end
 
 function scenarios.find_by_id(id)
-	for _, scenario in pairs(default_scenarios()) do
+	for _, scenario in pairs(scenarios.get_all()) do
 		if scenario.id == id then
 			return scenario
 		end
