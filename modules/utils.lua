@@ -287,9 +287,16 @@ function utils.normalize_required_energy_hysteresis_percentage(value)
 	return power_behavior.normalize_hysteresis_percentage(value)
 end
 
+-- Derived only: never persisted, and refreshed after reload/configuration changes.
+local threshold_cache, threshold_cache_tick, threshold_cache_overrides
 function utils.get_energy_threshold_config()
-	local overrides = storage and storage.test_overrides or nil
-	return power_behavior.resolve_runtime_threshold(settings.startup, settings.global, overrides)
+    local overrides = storage and storage.test_overrides or nil
+    local tick = game and game.tick or nil
+    if tick == nil or threshold_cache == nil or threshold_cache_tick ~= tick or threshold_cache_overrides ~= overrides then
+        threshold_cache = power_behavior.resolve_runtime_threshold(settings.startup, settings.global, overrides)
+        threshold_cache_tick, threshold_cache_overrides = tick, overrides
+    end
+    return threshold_cache
 end
 
 function utils.get_required_energy_percentage_setting()

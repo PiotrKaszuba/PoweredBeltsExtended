@@ -48,8 +48,10 @@ run_step() {
 }
 
 if [[ $SKIP_SYNTAX -eq 0 ]]; then
-  run_step "Lua syntax checks" lua -e "assert(loadfile('control.lua')); assert(loadfile('modules/compatibility.lua')); assert(loadfile('modules/undergrounds.lua')); assert(loadfile('tests/integration/harness_mod/lib/runtime.lua')); assert(loadfile('tests/integration/harness_mod/lib/assertions.lua')); assert(loadfile('tests/integration/harness_mod/lib/world.lua')); assert(loadfile('tests/integration/harness_mod/scenarios.lua')); print('lua syntax ok')"
+  run_step "Lua syntax checks" lua -e "assert(loadfile('control.lua')); assert(loadfile('modules/power_behavior.lua')); assert(loadfile('modules/compatibility.lua')); assert(loadfile('modules/undergrounds.lua')); assert(loadfile('tests/integration/harness_mod/lib/runtime.lua')); assert(loadfile('tests/integration/harness_mod/lib/assertions.lua')); assert(loadfile('tests/integration/harness_mod/lib/world.lua')); assert(loadfile('tests/integration/harness_mod/scenarios.lua')); print('lua syntax ok')"
 fi
+
+run_step "Power policy/cache regression" lua tests/test_power_behavior.lua
 
 if [[ $SKIP_COMPILE -eq 0 ]]; then
   run_step "Python compile checks" python -m compileall tests/integration/python

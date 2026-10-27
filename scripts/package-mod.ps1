@@ -24,6 +24,12 @@ $ReleasesDir = Join-Path $ProjectDir "releases"
 $OutputDir = Join-Path $ReleasesDir "${ModName}_${Version}"
 $ZipPath = Join-Path $ReleasesDir "${ModName}_${Version}.zip"
 
+$resolvedReleaseRoot = [System.IO.Path]::GetFullPath($ReleasesDir) + [System.IO.Path]::DirectorySeparatorChar
+if (-not [System.IO.Path]::GetFullPath($OutputDir).StartsWith($resolvedReleaseRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    -not [System.IO.Path]::GetFullPath($ZipPath).StartsWith($resolvedReleaseRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Release output must stay inside releases/"
+}
+
 # Clean previous release if requested or if it exists
 if ($Clean -or (Test-Path $OutputDir)) {
     if (Test-Path $OutputDir) {
@@ -117,7 +123,15 @@ if (-not $NoZip) {
         Remove-Item -Path $ZipPath -Force
     }
 
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($OutputDir, $ZipPath)
+    Add-Type -AssemblyName System.IO.Compression
+    $archive = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($file in Get-ChildItem -LiteralPath $OutputDir -File -Recurse) {
+            $relative = $file.FullName.Substring($OutputDir.Length + 1).Replace('\', '/')
+            $entry = "${ModName}_${Version}/$relative"
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $entry) | Out-Null
+        }
+    } finally { $archive.Dispose() }
 
     $zipSize = (Get-Item $ZipPath).Length / 1KB
     Write-Host "  Created: $ZipPath ($([math]::Round($zipSize, 2)) KB)" -ForegroundColor Gray

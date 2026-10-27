@@ -1028,6 +1028,26 @@ local function timing_scenarios()
 		on_tick = 380,
 	}
 	return {
+        {
+            id = "timing_preset_custom",
+            layout_id = "underground_splitter_line",
+            max_tick = 500,
+            settings_overrides = {operations_per_tick = 128, required_energy_percentage = 50,
+                required_energy_percentage_flat = 10, required_energy_hysteresis_percentage = 20},
+            actions = {
+                {tick = 400, type = "set_surface_daylight", mode = "midnight"},
+                {tick = 410, type = "set_power_buffers", target_refs = {"input_belt_1", "line_splitter"}, fraction = 0.65},
+                {tick = 420, type = "set_power_buffers", target_refs = {"input_belt_1", "line_splitter"}, fraction = 0.30},
+                {tick = 430, type = "set_power_buffers", target_refs = {"input_belt_1", "line_splitter"}, fraction = 0.60},
+                {tick = 440, type = "set_power_buffers", target_refs = {"input_belt_1", "line_splitter"}, fraction = 0.95},
+            },
+            checkpoints = {
+                {tick = 411, assertions = {{type = "threshold_band"}, {type = "power_state", target_refs = {"input_belt_1", "line_splitter"}, powered = true}}},
+                {tick = 421, assertions = {{type = "power_state", target_refs = {"input_belt_1", "line_splitter"}, powered = false}}},
+                {tick = 431, assertions = {{type = "power_state", target_refs = {"input_belt_1", "line_splitter"}, powered = false}}},
+                {tick = 441, assertions = {{type = "power_state", target_refs = {"input_belt_1", "line_splitter"}, powered = true}, {type = "structural_consistency"}}},
+            },
+        },
 		{
 			id = "timing_preset_default",
 			layout_id = "underground_splitter_line",

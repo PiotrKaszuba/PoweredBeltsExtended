@@ -10,7 +10,7 @@ This document captures practical run-mode choices for the headless integration s
 
 ## Key Facts
 
-1. `--until-tick` mode is effectively "run-to-target-tick as fast as possible" in headless runs.
+1. The maintained CLI backend uses `--benchmark` / `--benchmark-ticks` on Linux headless, and `--load-game` / `--until-tick` on Windows. Linux 2.0 server mode did not exit at `--until-tick`; save/restart acceptance polls for its checkpoint/result instead.
 2. In that mode, changing `game.speed` is not a reliable wall-time throttle.
 3. `game.speed` still affects the runtime state value, but real elapsed time is mostly CPU-bound.
 4. In server mode, `auto_pause` must be disabled for unattended ticking.
@@ -21,7 +21,7 @@ This document captures practical run-mode choices for the headless integration s
 
 Use when throughput is most important.
 
-1. Launch with `--load-game <save>` (or `--start-server`) and `--until-tick N`.
+1. Use the CLI backend: Linux `--benchmark <save> --benchmark-ticks N --benchmark-runs 1`; Windows `--load-game <save> --until-tick N`.
 2. Keep `N` close to expected suite completion (avoid excessive slack).
 3. Treat this mode as CPU-bound fast-forward, not real-time pacing.
 
@@ -160,3 +160,11 @@ AAI mod path input:
 
 - PowerShell: `-AaiModPath "<path>"` or env `PBE_AAI_MOD_PATH`
 - Bash: `--aai-mod-path <path>` or env `PBE_AAI_MOD_PATH`
+
+## Verified 2.0 acceptance route
+
+The October review uses the CLI backend, including bounded checkpoint/result
+polling for its two-process save/restart mode. The RCON backend was not rerun;
+its older server `--until-tick` exit strategy is not certified on Linux headless.
+RCON remains optional and is not required for any of the acceptance commands in
+`tests/README.md`.

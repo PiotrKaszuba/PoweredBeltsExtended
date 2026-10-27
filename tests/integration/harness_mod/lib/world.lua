@@ -1594,7 +1594,20 @@ local function apply_find_and_remove_matching_entities_action(active, action)
 end
 
 function M.apply_action(active, action, call_main_mod)
-	if action.type == "fill_inventory" then
+	if action.type == "set_power_buffers" then
+        for _, ref in ipairs(action.target_refs) do
+            local belt = M.get_referenced_entity(active, ref)
+            assert(belt and belt.valid, "Missing power-buffer target: " .. ref)
+            local found = false
+            for _, helper in pairs(active.surface.find_entities_filtered{position = belt.position, type = "electric-energy-interface"}) do
+                if string.find(helper.name, "%-power$") then
+                    helper.energy = helper.electric_buffer_size * action.fraction
+                    found = true
+                end
+            end
+            assert(found, "No power helper for " .. ref)
+        end
+    elseif action.type == "fill_inventory" then
 		apply_fill_inventory_action(active, action)
 	elseif action.type == "fuel_burner_inserters" then
 		apply_fuel_burner_inserters_action(active, action)

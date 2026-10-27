@@ -1,4 +1,4 @@
-﻿local power_behavior = {}
+local power_behavior = {}
 
 power_behavior.setting_names = {
 	startup_preset = "powered-belts-energy-behavior-preset",
@@ -102,7 +102,7 @@ function power_behavior.normalize_hysteresis_percentage(value)
 end
 
 local function read_setting_value(setting_table, name)
-	if type(setting_table) ~= "table" then
+	if type(setting_table) ~= "table" and type(setting_table) ~= "userdata" then
 		return nil
 	end
 	local setting = setting_table[name]

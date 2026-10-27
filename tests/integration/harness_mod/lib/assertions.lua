@@ -581,6 +581,22 @@ local function evaluate_power_transition_spread_bounds(active, assertion)
 	return true, "Timing spread bounds satisfied", extra
 end
 function M.run(active, checkpoint_tick, assertion, call_main_mod)
+    if assertion.type == "power_state" then
+        for _, ref in ipairs(assertion.target_refs) do
+            local entity = world.get_referenced_entity(active, ref)
+            local powered = entity and entity.valid and string.find(entity.name, "unpowered-", 1, true) ~= 1
+            if not entity or not entity.valid or powered ~= assertion.powered then
+                return make_assertion_result(checkpoint_tick, assertion, false, "Unexpected power state: " .. ref)
+            end
+        end
+        return make_assertion_result(checkpoint_tick, assertion, true, "Power states match")
+    elseif assertion.type == "threshold_band" then
+        local snapshot = call_main_mod("get_state_snapshot", active.surface.index)
+        local down = snapshot and snapshot.power_down_required_energy_percentage_setting
+        local up = snapshot and snapshot.power_up_required_energy_percentage_setting
+        return make_assertion_result(checkpoint_tick, assertion, down and up and math.abs(down - 48) < 1e-8 and math.abs(up - 72) < 1e-8,
+            "Custom threshold band: " .. tostring(down) .. "/" .. tostring(up) .. "; settings containers=" .. type(settings.startup) .. "/" .. type(settings.global) .. "; selected=" .. settings.startup["powered-belts-energy-behavior-preset"].value)
+    end
 	if assertion.type == "structural_consistency" then
 		local snapshot = call_main_mod("get_state_snapshot", active.surface.index)
 		if snapshot == nil or snapshot.totals == nil then

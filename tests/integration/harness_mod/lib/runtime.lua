@@ -810,6 +810,8 @@ local function run_active_scenario_tick()
 	while active.next_checkpoint_idx <= #active.scenario.checkpoints do
 		local checkpoint = active.scenario.checkpoints[active.next_checkpoint_idx]
 		if (checkpoint.tick or 0) > elapsed then break end
+        -- Assertions need current phase metrics, not metrics finalized afterward.
+        finalize_timing_probe_report(active)
 		for _, assertion in pairs(checkpoint.assertions or {}) do
 			active.assertion_results[#active.assertion_results + 1] = assertions.run(active, checkpoint.tick or elapsed, assertion, call_main_mod)
 		end
@@ -862,6 +864,15 @@ local function get_filtered_suite(filter)
         if filter == "suite:default" then
             return get_default_suite()
         end
+        if filter == "suite:acceptance" then
+            local accepted = {}
+            for _, scenario in pairs(get_default_suite()) do
+                if string.find(scenario.id, "_preserve$", 1) or string.find(scenario.id, "^planner_") or string.find(scenario.id, "^aai_") or scenario.id == "scan_recovery_smoke" then
+                    accepted[#accepted + 1] = scenario
+                end
+            end
+            return accepted
+        end
         if filter == "suite:timing" then
             return get_timing_suite()
         end
@@ -909,6 +920,11 @@ function M.on_configuration_changed(_event)
 end
 
 function M.on_tick(_event)
+    local checkpoint_tick = loaded_build_order_config and loaded_build_order_config.checkpoint_tick
+    if checkpoint_tick and checkpoint_tick > 0 and game.tick == checkpoint_tick and not storage.harness.checkpoint_written then
+        storage.harness.checkpoint_written = true
+        game.server_save("pbe-acceptance-checkpoint")
+    end
 	start_next_scenario_if_needed()
 	run_active_scenario_tick()
 	start_next_scenario_if_needed()

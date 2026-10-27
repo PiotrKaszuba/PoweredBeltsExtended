@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import subprocess
 from dataclasses import replace
 import json
 import os
@@ -26,6 +28,9 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("PBE_TEST_MOD_STATE", "both"),
         help="Run with PoweredBeltsExtended enabled, disabled, or both.",
     )
+    parser.add_argument("--mod-zip", type=Path, help="Stage the exact candidate ZIP unchanged instead of source.")
+    parser.add_argument("--scenario-filter", help="Scenario ID substring, or suite:acceptance for packaged behavior.")
+    parser.add_argument("--restart-at-tick", type=int, help="Save and restart an active scenario at this game tick (CLI backend).")
     parser.add_argument("--factorio-bin", type=Path, default=None, help="Path to factorio executable.")
     parser.add_argument("--artifacts-dir", type=Path, default=None, help="Artifacts output directory.")
     parser.add_argument("--until-tick", type=int, default=int(os.environ.get("PBE_TEST_UNTIL_TICK", "50000")))
@@ -66,7 +71,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--timing-presets",
-        default=os.environ.get("PBE_TEST_TIMING_PRESETS", "default,synchronized,responsive"),
+        default=os.environ.get("PBE_TEST_TIMING_PRESETS", "default,synchronized,responsive,custom"),
         help="Comma-separated preset list for timing runs: default,synchronized,responsive.",
     )
     parser.add_argument(
@@ -186,6 +191,19 @@ def run_suite(config: RunConfig, backend_name: str) -> dict[str, Any]:
         parsed = json.loads(raw)
         if not isinstance(parsed, dict):
             raise RuntimeError(f"Integration result payload must be a JSON object: {run_result.result_file}")
+        if not parsed.get("run_finished_tick") or not parsed.get("scenarios") or parsed.get("summary", {}).get("total", 0) == 0:
+            raise RuntimeError("Empty/incomplete suite is not acceptance evidence")
+        parsed["verification"] = {
+            "engine": subprocess.check_output([str(config.factorio_bin), "--version"], text=True).strip(),
+            "input": "exact ZIP" if config.mod_zip else "source folder",
+            "aai_mode": config.aai_mode_override,
+            "preset_override": config.pbe_energy_preset_override,
+            "extra_mod_archives": {path.name: hashlib.sha256((run_result.runtime_root / "mods" / path.name).read_bytes()).hexdigest()
+                                   for path in config.extra_mod_paths if path.is_file()},
+            "zip_sha256": hashlib.sha256((run_result.runtime_root / "mods" / config.mod_zip.name).read_bytes()).hexdigest() if config.mod_zip else None,
+            "restart_at_tick": config.restart_at_tick,
+            "timing_operations_default": 128 if config.mod_zip and config.pbe_energy_preset_override else None,
+        }
         return parsed
     finally:
         if config.remove_runtime_dir_on_exit:
@@ -236,7 +254,7 @@ def _parse_timing_presets(raw: str) -> list[str]:
         preset = part.strip().lower()
         if preset == "":
             continue
-        if preset not in {"default", "synchronized", "responsive"}:
+        if preset not in {"default", "synchronized", "responsive", "custom"}:
             raise ValueError(f"Invalid timing preset: {part!r}")
         if preset in seen:
             continue
@@ -379,6 +397,8 @@ def _run_timing_modes(
                 build_order_seed=None,
                 pbe_energy_preset_override=preset,
                 scenario_filter=f"timing_preset_{preset}",
+                until_tick=min(base_config.until_tick, 1200),
+                restart_at_tick=None,
             )
             result = run_suite(mode_config, backend_name=backend_name)
             timing_results.append((run_label, result))
@@ -413,6 +433,10 @@ def main() -> int:
     if not factorio_bin.exists():
         print(f"Factorio binary does not exist: {factorio_bin}", file=sys.stderr)
         return 2
+    version = subprocess.check_output([str(factorio_bin), "--version"], text=True)
+    if "Version: 2.0." not in version:
+        print("This acceptance runner requires Factorio 2.0", file=sys.stderr)
+        return 2
 
     artifacts_dir = args.artifacts_dir or (repo_root / "tests" / "artifacts")
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -426,6 +450,9 @@ def main() -> int:
         remove_runtime_dir_on_exit=remove_runtime_dir_on_exit,
         extra_mod_paths=extra_mod_paths,
         aai_mode_override=aai_mode_override,
+        mod_zip=args.mod_zip,
+        scenario_filter=args.scenario_filter,
+        restart_at_tick=args.restart_at_tick,
     )
 
     try:

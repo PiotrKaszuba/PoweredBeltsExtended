@@ -28,9 +28,11 @@ Push-Location $RepoRoot
 try {
     if (-not $SkipSyntax) {
         Invoke-Step "Lua syntax checks" {
-            lua -e "assert(loadfile('control.lua')); assert(loadfile('modules/compatibility.lua')); assert(loadfile('modules/undergrounds.lua')); assert(loadfile('tests/integration/harness_mod/lib/runtime.lua')); assert(loadfile('tests/integration/harness_mod/lib/assertions.lua')); assert(loadfile('tests/integration/harness_mod/lib/world.lua')); assert(loadfile('tests/integration/harness_mod/scenarios.lua')); print('lua syntax ok')"
+            lua -e "assert(loadfile('control.lua')); assert(loadfile('modules/power_behavior.lua')); assert(loadfile('modules/compatibility.lua')); assert(loadfile('modules/undergrounds.lua')); assert(loadfile('tests/integration/harness_mod/lib/runtime.lua')); assert(loadfile('tests/integration/harness_mod/lib/assertions.lua')); assert(loadfile('tests/integration/harness_mod/lib/world.lua')); assert(loadfile('tests/integration/harness_mod/scenarios.lua')); print('lua syntax ok')"
         }
     }
+
+    Invoke-Step "Power policy/cache regression" { lua tests/test_power_behavior.lua }
 
     if (-not $SkipCompile) {
         Invoke-Step "Python compile checks" {

@@ -28,6 +28,8 @@ class RunConfig:
     aai_mode_override: str | None = None
     pbe_energy_preset_override: str | None = None
     scenario_filter: str | None = None
+    mod_zip: Path | None = None
+    restart_at_tick: int | None = None
 
 
 @dataclass(frozen=True)
@@ -60,7 +62,7 @@ def _make_ignore_copy(artifacts_dir: Path):
     artifacts_dir_resolved = artifacts_dir.resolve()
 
     def _ignore_copy(path: str, names: list[str]) -> set[str]:
-        ignored = {".git", ".vscode", "__pycache__", ".pytest_cache"}
+        ignored = {".git", ".vscode", ".idea", "__pycache__", ".pytest_cache", "releases", "dist"}
         current = Path(path).resolve()
 
         # Never recurse into the configured artifacts branch while copying repo sources.
@@ -249,8 +251,8 @@ def _stage_aai_mode_override_mod(mods_dir: Path, aai_mode_override: str | None) 
     return mod_name
 
 
-def _stage_pbe_energy_preset_override_mod(mods_dir: Path, pbe_energy_preset_override: str | None) -> str | None:
-    if pbe_energy_preset_override not in {"default", "synchronized", "responsive", "custom"}:
+def _stage_pbe_energy_preset_override_mod(mods_dir: Path, pbe_energy_preset_override: str | None, acceptance: bool = False) -> str | None:
+    if pbe_energy_preset_override not in {"default", "synchronized", "responsive", "custom"} and not acceptance:
         return None
 
     mod_name = "PBEEnergyPresetOverride"
@@ -270,9 +272,18 @@ def _stage_pbe_energy_preset_override_mod(mods_dir: Path, pbe_energy_preset_over
     settings_updates = (
         "local setting = data.raw[\"string-setting\"] and data.raw[\"string-setting\"][\"powered-belts-energy-behavior-preset\"]\n"
         "if setting then\n"
-        f"  setting.default_value = {json.dumps(pbe_energy_preset_override)}\n"
+        f"  setting.default_value = {json.dumps(pbe_energy_preset_override or 'default')}\n"
         "end\n"
     )
+    if acceptance and pbe_energy_preset_override is not None:
+        # Runtime settings belong to PBE; the companion cannot write them at runtime.
+        # Override prototype defaults in the isolated settings stage instead.
+        settings_updates += '\nlocal ops = data.raw["int-setting"]["powered-belts-operations-per-tick"]; if ops then ops.default_value = 128 end\n'
+    if pbe_energy_preset_override == "custom":
+        for name, value in {"powered-belts-required-energy-percentage": 50,
+                            "powered-belts-required-energy-percentage-flat": 10,
+                            "powered-belts-required-energy-hysteresis-percentage": 20}.items():
+            settings_updates += f'\nlocal s = data.raw["int-setting"][{json.dumps(name)}]; if s then s.default_value = {value} end\n'
     (mod_dir / "settings-updates.lua").write_text(settings_updates, encoding="utf-8")
     return mod_name
 
@@ -305,10 +316,22 @@ def stage_runtime(config: RunConfig) -> RuntimePaths:
     mods_dir.mkdir(parents=True, exist_ok=True)
     script_output_dir.mkdir(parents=True, exist_ok=True)
     (user_data_dir / "mods").mkdir(parents=True, exist_ok=True)
+    (user_data_dir / "saves").mkdir(parents=True, exist_ok=True)
 
     if config.powered_belts_enabled:
-        mod_dest = mods_dir / config.repo_root.name
-        shutil.copytree(config.repo_root, mod_dest, ignore=_make_ignore_copy(artifacts_dir), dirs_exist_ok=False)
+        if config.mod_zip is not None:
+            archive = config.mod_zip.resolve()
+            with zipfile.ZipFile(archive) as candidate:
+                names = candidate.namelist()
+                if candidate.testzip() is not None or any("\\" in n or n.startswith("/") or ".." in Path(n).parts for n in names):
+                    raise ValueError("Invalid/nonportable candidate ZIP paths or CRC")
+                infos = [n for n in names if n.count("/") == 1 and n.endswith("/info.json")]
+                if len(infos) != 1 or _read_mod_name_from_info_json_bytes(candidate.read(infos[0])) != "PoweredBeltsExtended":
+                    raise ValueError("Candidate ZIP must contain one mod-root directory")
+            shutil.copy2(archive, mods_dir / archive.name)
+        else:
+            mod_dest = mods_dir / config.repo_root.name
+            shutil.copytree(config.repo_root, mod_dest, ignore=_make_ignore_copy(artifacts_dir), dirs_exist_ok=False)
 
     harness_source = config.repo_root / "tests" / "integration" / "harness_mod"
     harness_dest = mods_dir / "PBEIntegrationHarness_0.1.0"
@@ -321,13 +344,14 @@ def stage_runtime(config: RunConfig) -> RuntimePaths:
         f"M.default_mode = {json.dumps(build_order_mode)}\n"
         f"M.default_seed = {json.dumps(build_order_seed)}\n"
         f"M.scenario_filter = {json.dumps(config.scenario_filter)}\n"
+        f"M.checkpoint_tick = {config.restart_at_tick or 0}\n"
         "return M\n"
     )
     (harness_dest / "lib" / "build_order_config.lua").write_text(harness_build_order_config, encoding="utf-8")    staged_external_mod_names = _stage_external_mods(config.extra_mod_paths, mods_dir)
     aai_mode_override_mod = _stage_aai_mode_override_mod(mods_dir, config.aai_mode_override)
     if aai_mode_override_mod is not None:
         staged_external_mod_names.append(aai_mode_override_mod)
-    pbe_energy_preset_override_mod = _stage_pbe_energy_preset_override_mod(mods_dir, config.pbe_energy_preset_override)
+    pbe_energy_preset_override_mod = _stage_pbe_energy_preset_override_mod(mods_dir, config.pbe_energy_preset_override, config.mod_zip is not None)
     if pbe_energy_preset_override_mod is not None:
         staged_external_mod_names.append(pbe_energy_preset_override_mod)
 
@@ -347,10 +371,15 @@ def stage_runtime(config: RunConfig) -> RuntimePaths:
         add_enabled_mod(mod_name)
     add_enabled_mod("PBEIntegrationHarness")
 
+    # Unlisted bundled expansion modules otherwise default to enabled.
+    for name in ("space-age", "quality", "elevated-rails"):
+        if name not in enabled_mod_names:
+            mod_entries.append({"name": name, "enabled": False})
     mod_list = {"mods": mod_entries}
-    (user_data_dir / "mods" / "mod-list.json").write_text(json.dumps(mod_list, indent=2), encoding="utf-8")
+    (mods_dir / "mod-list.json").write_text(json.dumps(mod_list, indent=2), encoding="utf-8")
 
-    config_path.write_text("[path]\nwrite-data=" + str(user_data_dir).replace("\\", "/") + "\n", encoding="utf-8")
+    data_dir = config.factorio_bin.resolve().parents[2] / "data"
+    config_path.write_text("[path]\nread-data=" + data_dir.as_posix() + "\nwrite-data=" + user_data_dir.as_posix() + "\n", encoding="utf-8")
     server_settings = _build_test_server_settings(config.factorio_bin)
     server_settings_path.write_text(json.dumps(server_settings, indent=2), encoding="utf-8")
 
