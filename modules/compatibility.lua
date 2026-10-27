@@ -335,13 +335,13 @@ function compatibility.on_pre_replace(entity, new_name, power_up)
 	end
 
 	
-	local network_fluid = pipe.get_fluid(1)
-	local network_capacity, pipe_fluidbox, pipe_force, pipe_volume, restore_fluid = nil, nil, nil, nil, nil
+	-- Preserve only fluid that cannot fit in the surviving segment after removal.
+	local network_fluid = pipe.get_fluid_segment_fluid(1)
+	local network_capacity, pipe_force, pipe_volume, restore_fluid = nil, nil, nil, nil, nil
 	if network_fluid ~= nil then
-		pipe_fluidbox = pipe.fluidbox
-		network_capacity = pipe_fluidbox.get_capacity(1)
+		network_capacity = pipe.get_fluid_segment_capacity(1)
 		pipe_force = pipe.force and pipe.force.name or nil
-		pipe_volume = pipe.prototype.fluidbox_prototypes[1].volume
+		pipe_volume = pipe.get_fluid_capacity(1)
 
 		restore_fluid = network_fluid.amount - (network_capacity - pipe_volume)
 		if restore_fluid <= 0 then restore_fluid = nil end
