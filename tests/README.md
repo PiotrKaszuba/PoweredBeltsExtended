@@ -5,7 +5,7 @@ This repository uses in-engine integration tests (headless Factorio simulation).
 ## Prerequisites
 
 1. `Python 3.11+` on `PATH`.
-2. Factorio 2.0 binary set via `FACTORIO_BIN`.
+2. Factorio 2.1 binary set via `FACTORIO_BIN`.
 
 The CLI backend needs no third-party Python packages. Install the optional RCON dependency only when using that backend:
 
@@ -47,8 +47,8 @@ negative controls. A packaged release excludes `modules/tests.lua`; use the
 production acceptance selection rather than silently relying on unavailable overrides:
 
 ```text
-python -m tests.integration.python.run_integration --factorio-bin PATH_TO_2_0 --mod-zip PATH_TO_ZIP --mod-state enabled --scenario-filter suite:acceptance --run-timing-suite false
-python -m tests.integration.python.run_integration --factorio-bin PATH_TO_2_0 --mod-zip PATH_TO_ZIP --mod-state enabled --scenario-filter planner_upgrade_outage_persistence --restart-at-tick 400 --run-timing-suite false
+python -m tests.integration.python.run_integration --factorio-bin PATH_TO_2_1 --mod-zip PATH_TO_ZIP --mod-state enabled --scenario-filter suite:acceptance --run-timing-suite false
+python -m tests.integration.python.run_integration --factorio-bin PATH_TO_2_1 --mod-zip PATH_TO_ZIP --mod-state enabled --scenario-filter planner_upgrade_outage_persistence --restart-at-tick 400 --run-timing-suite false
 ```
 
 Archive bytes are staged unchanged. Reports record SHA-256 and actual engine version.
@@ -62,8 +62,7 @@ to separate threshold behavior from scheduler delay; Custom also sets isolated
 checkpoint and the resumed active harness state. It does not prove an old-version
 upgrade. Keep RCON optional; Lua drives the actual scenario actions.
 
-Linux headless uses benchmark execution for ordinary scenarios; Windows keeps its
-normal launch route. Engine data paths and base-only mod selection are explicit.
+Benchmark execution runs ordinary scenarios without opening the game UI. Engine data paths and base-only mod selection are explicit.
 No original saves, installed mods or Steam branch settings are modified.
 
 The synthetic floating-belt prototype fixture verifies a valid nonstandard collision

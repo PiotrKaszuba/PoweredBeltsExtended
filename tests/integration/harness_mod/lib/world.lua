@@ -1207,7 +1207,7 @@ local function clear_pipe_fluid(pipe)
 	end
 	local fluid = pipe.get_fluid(1)
 	if fluid ~= nil and (fluid.amount or 0) > 0 then
-		pipe.remove_fluid({name = fluid.name, amount = fluid.amount})
+		pipe.clear_fluid(1)
 	end
 end
 

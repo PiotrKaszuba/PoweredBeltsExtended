@@ -434,8 +434,8 @@ def main() -> int:
         print(f"Factorio binary does not exist: {factorio_bin}", file=sys.stderr)
         return 2
     version = subprocess.check_output([str(factorio_bin), "--version"], text=True)
-    if "Version: 2.0." not in version:
-        print("This acceptance runner requires Factorio 2.0", file=sys.stderr)
+    if "Version: 2.1." not in version:
+        print("This acceptance runner requires Factorio 2.1", file=sys.stderr)
         return 2
 
     artifacts_dir = args.artifacts_dir or (repo_root / "tests" / "artifacts")

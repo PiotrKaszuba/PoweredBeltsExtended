@@ -25,12 +25,10 @@ def _create_world(config: RunConfig, runtime: RuntimePaths) -> None:
 
 
 def _run_headless_suite(config: RunConfig, runtime: RuntimePaths) -> None:
-    # Linux headless has no --load-game UI route; benchmark executes the same
-    # deterministic on_tick suite in a real world without a public server.
-    import sys
-    launch = (["--benchmark", str(runtime.save_path), "--benchmark-ticks", str(config.until_tick),
-               "--benchmark-runs", "1"] if sys.platform != "win32" else
-              ["--load-game", str(runtime.save_path), "--disable-audio", "--until-tick", str(config.until_tick)])
+    # Benchmark executes deterministic Lua on both headless and installed clients,
+    # without opening a game window or changing the player's profile.
+    launch = ["--benchmark", str(runtime.save_path), "--benchmark-ticks", str(config.until_tick),
+              "--benchmark-runs", "1", "--disable-audio"]
     result = run_factorio_command(config.factorio_bin,
         ["--mod-directory", str(runtime.mods_dir), "--config", str(runtime.config_path), *launch],
         timeout_seconds=config.timeout_seconds)

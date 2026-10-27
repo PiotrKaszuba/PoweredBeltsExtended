@@ -235,7 +235,7 @@ def _stage_aai_mode_override_mod(mods_dir: Path, aai_mode_override: str | None) 
         "version": "0.1.0",
         "title": "PBE AAI Loaders Mode Override",
         "author": "PoweredBeltsExtended Tests",
-        "factorio_version": "2.0",
+        "factorio_version": "2.1",
         "dependencies": ["base", "? aai-loaders"],
     }
     (mod_dir / "info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
@@ -264,7 +264,7 @@ def _stage_pbe_energy_preset_override_mod(mods_dir: Path, pbe_energy_preset_over
         "version": "0.1.0",
         "title": "PBE Energy Preset Override",
         "author": "PoweredBeltsExtended Tests",
-        "factorio_version": "2.0",
+        "factorio_version": "2.1",
         "dependencies": ["base", "? PoweredBeltsExtended"],
     }
     (mod_dir / "info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
@@ -330,7 +330,7 @@ def stage_runtime(config: RunConfig) -> RuntimePaths:
                     raise ValueError("Candidate ZIP must contain one mod-root directory")
             shutil.copy2(archive, mods_dir / archive.name)
         else:
-            mod_dest = mods_dir / config.repo_root.name
+            mod_dest = mods_dir / "PoweredBeltsExtended"
             shutil.copytree(config.repo_root, mod_dest, ignore=_make_ignore_copy(artifacts_dir), dirs_exist_ok=False)
 
     harness_source = config.repo_root / "tests" / "integration" / "harness_mod"
