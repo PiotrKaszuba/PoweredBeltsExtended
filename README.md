@@ -259,3 +259,15 @@ It checks belt-to-power-entity consistency and removes or repairs orphaned/incor
 
 This project builds on Powered Belts by Romner_set: https://mods.factorio.com/mod/PoweredBelts.
 
+<!-- PORTAL-DESCRIPTION-END: copy everything above this line to the mod portal. -->
+
+---
+
+## Development
+
+Repository-only notes below this boundary are not part of the portal description.
+
+- [Engine scenarios and commands](tests/README.md)
+- [Run modes and debugging](tests/integration/RUN_MODES.md)
+- `scripts/package-mod.ps1` or `scripts/package-mod.sh` builds a release archive.
+- Use an actual Factorio 2.0 engine for 2.0 acceptance. Tests run in isolated profiles.
